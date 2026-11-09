@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: xcodegen
+        run: brew install xcodegen
+
+      - name: toolchain
+        run: xcodebuild -version
+
+      - name: build
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/build.sh 2>&1 | tee build.log
+
+      - name: report
+        if: always()
+        run: |
+          tail -n 120 build.log || true
+          ls -lh WorseFiles-unsigned.ipa || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: worsefiles-unsigned-${{ github.sha }}
+          path: |
+            WorseFiles-unsigned.ipa
+            build.log
+          if-no-files-found: warn
+
+      - name: release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" WorseFiles-unsigned.ipa \
+            --title "worsefiles ${GITHUB_REF_NAME}" \
+            --notes "unsigned ipa, sign before install"

@@ -1,0 +1,189 @@
+//
+//  Catalog.swift
+//  WorseFiles
+//
+
+import Foundation
+import Combine
+
+final class CatalogStore: @unchecked Sendable {
+    private let fileURL: URL?
+
+    init() {
+        let manager = FileManager.default
+        guard let support = manager.urls(for: .applicationSupportDirectory,
+                                         in: .userDomainMask).first else {
+            fileURL = nil
+            return
+        }
+        let directory = support.appendingPathComponent("WorseFiles", isDirectory: true)
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            fileURL = directory.appendingPathComponent("catalog.json")
+        } catch {
+            Log.error("catalog directory: \(error.localizedDescription)")
+            fileURL = nil
+        }
+    }
+
+    func load() -> CatalogDisk {
+        guard let fileURL, let data = try? Data(contentsOf: fileURL) else { return CatalogDisk() }
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(CatalogDisk.self, from: data)
+        } catch {
+            Log.error("catalog decode: \(error.localizedDescription)")
+            return CatalogDisk()
+        }
+    }
+
+    func save(_ disk: CatalogDisk) {
+        guard let fileURL else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = []
+            let data = try encoder.encode(disk)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            Log.error("catalog save: \(error.localizedDescription)")
+        }
+    }
+}
+
+final class Catalog: ObservableObject {
+    static let shared = Catalog()
+
+    @Published private(set) var disk: CatalogDisk
+
+    private let store: CatalogStore
+
+    init(store: CatalogStore = CatalogStore()) {
+        self.store = store
+        self.disk = store.load()
+    }
+
+    func scanRecord(for root: String) -> ContainerScanRecord? {
+        disk.scans[PathTool.canonical(root)]
+    }
+
+    func count(for root: String) -> Int {
+        scanRecord(for: root)?.paths.count ?? 0
+    }
+
+    func items(for root: String) -> [FSItem] {
+        let key = PathTool.canonical(root)
+        guard let record = disk.scans[key] else { return [] }
+        return record.paths.map { path in
+            FSItem(path: path,
+                   name: PathTool.name(of: path),
+                   isDirectory: true,
+                   isSymbolicLink: false,
+                   isHidden: false,
+                   size: 0,
+                   modified: nil,
+                   identifier: disk.labels[path])
+        }
+    }
+
+    func label(for path: String) -> String? {
+        disk.labels[PathTool.canonical(path)]
+    }
+
+    func setLabel(_ label: String, for path: String) {
+        setLabels([path: label])
+    }
+
+    func setLabels(_ pairs: [String: String]) {
+        var next = disk
+        var changed = false
+        for (path, label) in pairs {
+            guard !label.isEmpty else { continue }
+            let key = PathTool.canonical(path)
+            if next.labels[key] != label {
+                next.labels[key] = label
+                changed = true
+            }
+        }
+        guard changed else { return }
+        disk = next
+        store.save(next)
+    }
+
+    func mergeScan(root: String, paths: [String], watermark: UInt64, replace: Bool) {
+        let key = PathTool.canonical(root)
+        var next = disk
+        var record = next.scans[key] ?? ContainerScanRecord(paths: [], watermark: 0, updated: nil)
+        if replace {
+            record.paths = paths.sorted()
+        } else {
+            record.paths = Array(Set(record.paths).union(paths)).sorted()
+        }
+        record.watermark = max(record.watermark, watermark)
+        record.updated = Date()
+        next.scans[key] = record
+        disk = next
+        store.save(next)
+    }
+
+    func noteRename(from oldPath: String, to newPath: String) {
+        let oldKey = PathTool.canonical(oldPath)
+        let newKey = PathTool.canonical(newPath)
+        let parent = PathTool.parent(of: oldKey)
+        var next = disk
+        guard var record = next.scans[parent],
+              record.paths.contains(where: { PathTool.canonical($0) == oldKey }) else { return }
+        record.paths.removeAll { PathTool.canonical($0) == oldKey }
+        if !record.paths.contains(where: { PathTool.canonical($0) == newKey }) {
+            record.paths.append(newKey)
+            record.paths.sort()
+        }
+        next.scans[parent] = record
+        if let label = next.labels.removeValue(forKey: oldKey) {
+            next.labels[newKey] = label
+        }
+        disk = next
+        store.save(next)
+    }
+
+    func removePaths(_ paths: [String]) {
+        let keys = Set(paths.map { PathTool.canonical($0) })
+        guard !keys.isEmpty else { return }
+        var next = disk
+        var scans = next.scans
+        for (root, record) in scans {
+            var updated = record
+            updated.paths = record.paths.filter { !keys.contains(PathTool.canonical($0)) }
+            scans[root] = updated
+        }
+        next.scans = scans
+        for key in keys {
+            next.labels.removeValue(forKey: key)
+        }
+        disk = next
+        store.save(next)
+    }
+
+    func clearScans() {
+        var next = disk
+        next.scans.removeAll()
+        disk = next
+        store.save(next)
+        Log.info("cleared scan cache")
+    }
+
+    func clearLabels() {
+        var next = disk
+        next.labels.removeAll()
+        disk = next
+        store.save(next)
+        Log.info("cleared label cache")
+    }
+
+    func clearAll() {
+        disk = CatalogDisk()
+        store.save(disk)
+        Log.info("cleared catalog")
+    }
+}

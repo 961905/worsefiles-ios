@@ -1,0 +1,129 @@
+# WorseFiles / 容器文件
+
+一个基于 [worse_query](https://github.com/forcequitOS/worse_query) 的 iOS 容器文件管理器。SwiftUI，iPhone，中文界面。
+
+浏览 `worse_query` 覆盖的容器路径，读取应用数据、App Group、扩展与系统容器；支持目录进出、排序、搜索、复制/剪切/粘贴、删除、重命名、导入、分享、QuickLook 和文本编辑。需要 App Group entitlement，只在自己的设备上使用。
+
+**这不是越狱，也不会变成越狱。** 只覆盖 `worse_query` 列出的路径，不涉及内核。
+
+## 适用范围
+
+| 项目 | 值 |
+| --- | --- |
+| 运行系统 | iOS 26.0–26.7.2 / 27.2 |
+| 构建目标 | iOS 18.0+，需要能编译 SwiftUI 的 Xcode |
+| 设备 | iPhone 真机（`TARGETED_DEVICE_FAMILY = 1`）；模拟器只能验证界面 |
+| 必需能力 | App Groups entitlement |
+| 签名 | 支持 App Groups 的开发者证书或团队；免费 Apple ID 通常不行 |
+
+低于 iOS 26 也能安装启动，但只剩本应用沙盒与自己的 App Group 可浏览。iOS 27 的系统容器入口只在 27 及以上显示。
+
+## 功能
+
+- 根路径：
+  - 应用数据 `/private/var/mobile/Containers/Data/Application`
+  - 应用扩展 `/private/var/mobile/Containers/Data/PluginKitPlugin`
+  - 系统守护进程 `/private/var/mobile/Containers/Data/InternalDaemon`
+  - App 组 `/private/var/mobile/Containers/Shared/AppGroup`
+  - iOS 27：`/private/var/containers/Data/System`、`/private/var/containers/Shared/SystemGroup`
+  - 本应用沙盒、Documents、App Group 根目录
+- 应用数据/扩展/守护进程的父目录不可列举时，按 inode 扫描发现容器；扫描结果与 inode 水位缓存，刷新只扫新增区间。
+- App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
+- 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；支持批量“识别容器名称”。
+- 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
+- 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
+- 收藏、最近访问、路径面包屑、前进/后退/上级。
+- 设置：App Group ID、隐藏文件、默认排序、inode 上限、缓存清理、句柄释放、诊断与日志。
+
+## 构建
+
+### GitHub Actions
+
+推送 `main` 后，`.github/workflows/build.yml` 在 macOS 15 runner 上安装 xcodegen、构建未签名 IPA，上传 `worsefiles-unsigned-<sha>` artifact。推 `v*` tag 会创建 release。签名需自己完成。
+
+### 本地
+
+```sh
+brew install xcodegen
+./scripts/build.sh
+```
+
+产物是 `WorseFiles-unsigned.ipa`，未签名。未签名 IPA 不携带已生效的 entitlements；用 SideStore/AltStore 或其他工具重签时，必须把 `App/WorseFiles.entitlements` 里的 App Group 一并授予，否则运行时会提示 App Group 不可用。
+
+### Xcode
+
+```sh
+xcodegen generate
+open WorseFiles.xcodeproj
+```
+
+在 target 的 Signing & Capabilities 里：
+
+1. 选择自己的 Team。
+2. 新建一个 App Group（Xcode 会注册到你的账号），例如 `group.com.yourname.worsefiles`。
+3. 把 `App/WorseFiles.entitlements` 里的 group 改成同一个值。用一个只给 WorseFiles 的 App Group，不要和其他 App 或扩展共用：每次容器查询都会删除并重建该组的 `Library/Caches`。
+4. 把 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 改成自己唯一的 bundle id；如果已经生成过项目，直接改 target 的 Bundle Identifier。
+5. 安装到 iPhone。App Group 由签名描述文件提供，运行时不会弹系统权限框。
+
+应用内“设置 → App Group”里的 ID 必须与 entitlements 完全一致，否则 `worse_query` 返回 `-1`。改了 group 之后应用会释放所有旧句柄。
+
+## 使用
+
+1. 打开“容器文件”。顶部状态显示 App Group 是否可用；版本落在测试区间内才显示“环境就绪”。
+2. 点“应用数据”。第一次需要 inode 扫描，进度条会显示当前区间；结果会写进缓存，之后打开先显示缓存，下拉刷新做增量扫描。
+3. 进入一个 UUID 目录，标题会尝试解析成 bundle identifier；返回父目录后该行也会显示名称。
+4. 长按或左滑文件行：信息、重命名、拷贝/剪切、制作副本、分享、删除；目录还能收藏。底部剪贴板条可粘贴到当前目录。
+5. 右上角勾选图标进入多选；底部出现拷贝、剪切、删除、分享。
+6. 右上角 `…` 有排序、隐藏文件、导入、收藏、识别容器名称、当前目录信息、导出当前目录。
+7. 文件点击默认 QuickLook。文本文件可以用“文本编辑”修改，保存直接写回容器。
+
+删除会真实删除容器里的内容，没有回收站。先导出备份。
+
+## 扫描与缓存
+
+`pathleak` 的做法是从 1 开始暴力枚举 inode，用 `fsgetpath` 反查路径，再筛选父目录的直接子项。WorseFiles 把它拆成 40,000 个 inode 一块，用多核并行扫，并把上次扫描到的 inode 水位记在本地。
+
+- 上限默认取“在 App 临时目录新建一个文件后的 inode”。这个值随设备变化，一般比容器目录的最新 inode 只多不少。
+- 扫描结果保存在 Application Support/WorseFiles/catalog.json；设置里可清除扫描结果与名称缓存。
+- 手动填写“inode 上限”会用它替代自动值；设置后下拉刷新会全量扫描 `1…N` 并重建该根路径缓存。填得太小会漏容器，填得太大只是更慢。
+- inode 可能被复用，缓存不是实时目录索引；需要保证完整时清除扫描结果再扫。
+- 已存在的缓存不会每次自动重扫；下拉刷新、或清除后重进根目录才会扫描。
+- 失效的旧路径会留在缓存里，点进去报错，刷新后不会自动剔除（删除容器是系统行为，遍历验证成本更高）。
+
+## 原理
+
+`worse_query` 通过 `libsystem_containermanager` 创建 class 7（appGroup）查询，把 App Group 的 `Library/Caches` 换成指向目标路径的符号链接，让 containermanagerd 为解析后的目标签发 sandbox extension，再 `sandbox_extension_consume`。
+
+WorseFiles 在它的外面加了两层：
+
+- `SandboxBroker`：最多缓存 6 个扩展句柄，串行化查询，按 LRU 释放。所有文件操作都先确保目标（或父目录）的扩展已消费。
+- `FileService`：单串行队列，避免扫描/粘贴/删除交错；导出到临时目录后再给 QuickLook 或分享面板，避免系统组件持有被回收的沙盒路径。
+
+**重要副作用：** 每次调用都会删除并重建 App Group 的 `Library/Caches`。不要往这个目录放持久数据。WorseFiles 的缓存放在自己的 Application Support，不在 App Group。
+
+## 边界
+
+- 只访问 `worse_query` 能返回扩展的路径；`/var/containers/Bundle/Application` 不在范围内。
+- 父目录扩展取决于系统版本与容器类型；失败时只能靠 inode 扫描发现子项。扫描发现路径不等于一定拿得到扩展，进入失败会显示错误。
+- 沙盒扩展可能按路径签发。读取、预览、导出单个文件时会分别尝试目标路径与父目录；目录递归复制/导出仍依赖目录扩展覆盖子树，失败会明确报错。
+- 文本编辑上限 2 MB；超过时只读显示前 2 MB，保存禁用，避免截断。
+- 预览和分享会把目标复制到 App 临时目录，大目录/大文件会占磁盘并耗时。
+- 没有网络、上传、越狱、内核利用或绕过签名。
+- 不保证在所有 26.x/27.x 小版本上都能拿到扩展；`worse_query` 本身有版本窗口。
+
+## 文件结构
+
+```
+App/        SwiftUI 界面、入口、设置、诊断、QuickLook/分享/文件选择器
+Engine/     沙盒句柄、文件服务、inode 扫描、目录缓存、模型、排序
+Bridge/     worse_query / pathleak 原文件，加 pathleak_range
+Resources/  AppIcon、AccentColor
+scripts/    build.sh
+project.yml xcodegen 工程描述
+```
+
+## 许可
+
+GPL-3.0。`worse_query` 与 `pathleak` © 2026 Taj C (forcequit)，GPL-3.0；`pathleak_range.m` 是 `pathleak.m` 的派生文件。完整声明见 `NOTICE`，许可证全文见 `LICENSE`。
+
+与 Apple、forcequitOS 无隶属关系。仅供自己的设备、开发和调试使用。

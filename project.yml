@@ -1,0 +1,47 @@
+name: WorseFiles
+options:
+  bundleIdPrefix: com.kestrel
+  developmentLanguage: zh-Hans
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    CLANG_ENABLE_OBJC_ARC: YES
+targets:
+  WorseFiles:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - "Info.plist"
+          - "WorseFiles.entitlements"
+      - path: Engine
+      - path: Bridge
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kestrel.worsefiles
+        PRODUCT_NAME: WorseFiles
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/WorseFiles.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Bridge/WorseFiles-Bridging-Header.h
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+        ENABLE_BITCODE: NO
+        HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(PROJECT_DIR)/Bridge"
+        OTHER_LDFLAGS:
+          - "$(inherited)"

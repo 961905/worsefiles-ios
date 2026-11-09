@@ -1,0 +1,39 @@
+WorseFiles
+Copyright (C) 2026 WorseFiles contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+
+Bundled third-party code
+------------------------
+
+worse_query and pathleak
+Copyright (C) 2026 Taj C (forcequit)
+https://github.com/forcequitOS/worse_query
+License: GPL-3.0
+
+Copied files:
+  Bridge/worse_query.h
+  Bridge/worse_query.m
+  Bridge/pathleak.h
+  Bridge/pathleak.m
+
+Bridge/pathleak_range.m is derived from Bridge/pathleak.m. Changes: the inode
+walk takes a bounded [from, to] window instead of 1...max, and the path string
+is built with NSString instead of NSFileManager. The algorithm, comments, and
+error behaviour otherwise follow the original.
+
+The SwiftUI application, engine, project files, and icon are original work and
+are released under the same GPL-3.0 terms. The full license text is in LICENSE.
+
+WorseFiles is not affiliated with Apple or with forcequitOS. It is a developer
+tool and a proof of concept, not a jailbreak.
