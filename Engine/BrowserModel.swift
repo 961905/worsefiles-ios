@@ -207,7 +207,7 @@ final class BrowserModel: ObservableObject {
         let needsScan = forceScan || !recordExists || ContainerIndex.shared.shouldRefreshOnOpen
         var scanError: Error?
         if needsScan {
-            if spec == .dataApplication {
+            if spec.path == Roots.dataApplication.path {
                 let hit = await TargetedScan.findDataApplication()
                 if let hitPath = hit.first {
                     let parent = PathTool.parent(of: hitPath)
