@@ -5,8 +5,9 @@
 //  Derived from pathleak.m by Taj C (forcequit), part of worse_query,
 //  GPL-3.0. This file is part of WorseFiles, GPL-3.0. See LICENSE.
 //
-//  Single-target lookup: stop at the first direct child whose name contains
-//  needle. Callers pass bounded ranges so early exit really saves work.
+//  Single-target lookup: stop at the first direct child whose container
+//  metadata bundle id contains needle (name match as a fallback). Callers
+//  pass bounded ranges so early exit really saves work.
 //
 
 #import <Foundation/Foundation.h>
@@ -43,6 +44,11 @@ NSArray<NSString *> *pathleak_first_match(NSString *root,
     if (!needle_bytes) return nil;
     size_t needle_length = strlen(needle_bytes);
 
+    // Data container directory names are UUIDs; the bundle id lives in the
+    // container manager metadata plist inside each container.
+    static NSString * const metadataName = @".com.apple.mobile_container_manager.metadata.plist";
+    static NSString * const metadataKey = @"MCContainerBundleIdentifier";
+
     NSMutableArray<NSString *> *result = [NSMutableArray array];
     char buffer[PATH_MAX];
     for (uint64_t inode = from_inode; inode <= to_inode; inode++) {
@@ -53,17 +59,29 @@ NSArray<NSString *> *pathleak_first_match(NSString *root,
         if (buffer[prefix_length] != '/') continue;
         const char *name = buffer + prefix_length + 1;
         if (strchr(name, '/')) continue;
-        if (strlen(name) < needle_length) continue;
-        if (!strstr(name, needle_bytes)) continue;
 
         NSString *string = [[NSString alloc] initWithBytes: buffer
                                                     length: strlen(buffer)
                                                   encoding: NSUTF8StringEncoding];
-        if (string) [result addObject: string];
+        BOOL matches = NO;
+        if (string) {
+            if (strlen(name) >= needle_length && strstr(name, needle_bytes)) {
+                matches = YES;
+            } else {
+                NSString *metadataPath = [string stringByAppendingPathComponent: metadataName];
+                NSDictionary *metadata = [NSDictionary dictionaryWithContentsOfFile: metadataPath];
+                NSString *bundleId = [metadata objectForKey: metadataKey];
+                if ([bundleId isKindOfClass: NSString.class] &&
+                    [bundleId rangeOfString: needle].location != NSNotFound) {
+                    matches = YES;
+                }
+            }
+        }
+        if (matches && string) [result addObject: string];
 #if !__has_feature(objc_arc)
         [string release];
 #endif
-        break;
+        if (matches) break;
     }
     return result;
 }
