@@ -11,6 +11,7 @@ enum SettingsKey {
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let maxInode = "maxInodeOverride"
+    static let autoResolveLabels = "autoResolveLabels"
 }
 
 enum AppSettings {
@@ -19,6 +20,14 @@ enum AppSettings {
     // Never a user-editable preference: the group is whatever the signer
     // actually granted. SandboxBroker and FileService ask this every time.
     static var appGroupID: String { AppGroupResolver.active }
+
+    static var autoResolveLabels: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: SettingsKey.autoResolveLabels) == nil { return true }
+            return UserDefaults.standard.bool(forKey: SettingsKey.autoResolveLabels)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.autoResolveLabels) }
+    }
 
     static var showHidden: Bool {
         get { UserDefaults.standard.bool(forKey: SettingsKey.showHidden) }

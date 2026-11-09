@@ -82,6 +82,7 @@ final class BrowserModel: ObservableObject {
     private var scanToken: CancelToken?
     private var labelToken: CancelToken?
     private var labelTask: Task<Void, Never>?
+    private var autoLabelSuppressed = false
 
     init(target: BrowseTarget) {
         let canonical = PathTool.canonical(target.path)
@@ -240,6 +241,7 @@ final class BrowserModel: ObservableObject {
                 state = .loaded
                 selectionMode = false
                 selected.removeAll()
+                autoResolveLabelsIfNeeded()
                 return
             } catch {
                 Log.info("parent listing failed for \(spec.path): \(error.localizedDescription)")
@@ -248,6 +250,7 @@ final class BrowserModel: ObservableObject {
                     await scan(spec: spec, full: fullScan, generation: generation)
                     return
                 }
+                autoResolveLabelsIfNeeded()
                 return
             }
         }
@@ -255,6 +258,8 @@ final class BrowserModel: ObservableObject {
         if cached.isEmpty || forceScan {
             let fullScan = cached.isEmpty || (forceScan && AppSettings.maxInodeOverride != nil)
             await scan(spec: spec, full: fullScan, generation: generation)
+        } else {
+            autoResolveLabelsIfNeeded()
         }
     }
 
@@ -305,6 +310,7 @@ final class BrowserModel: ObservableObject {
         state = .loaded
         selectionMode = false
         selected.removeAll()
+        autoResolveLabelsIfNeeded()
     }
 
     func cancelScan() {
@@ -662,11 +668,12 @@ final class BrowserModel: ObservableObject {
         sheet = SheetPayload(content: .importer)
     }
 
-    func startLabelResolution(app: AppModel) {
+    func startLabelResolution(app: AppModel?, manual: Bool = true) {
+        if manual { autoLabelSuppressed = false }
         guard labelTask == nil else { return }
         let targets = items.filter { $0.isDirectory && $0.identifier == nil }
         guard !targets.isEmpty else {
-            app.flash("当前没有待识别的容器")
+            if manual { app?.flash("当前没有待识别的容器") }
             return
         }
         let token = CancelToken()
@@ -681,28 +688,43 @@ final class BrowserModel: ObservableObject {
                 let identifier = await Task.detached(priority: .utility) {
                     FileService.shared.identifier(for: itemPath)
                 }.value
+                guard self.labelToken === token else { return }
                 if let identifier, !identifier.isEmpty {
                     self.catalog.setLabel(identifier, for: item.path)
                     if let position = self.items.firstIndex(where: { $0.path == item.path }) {
-                        self.items[position].identifier = identifier
+                        var updated = self.items
+                        updated[position].identifier = identifier
+                        self.items = updated
                     }
                 }
                 index += 1
                 self.labelProgress = LabelProgress(done: index, total: targets.count)
             }
+            guard self.labelToken === token else { return }
             self.labelProgress = nil
             self.labelTask = nil
             self.labelToken = nil
             self.items = Sorter.sorted(self.items, order: self.sortOrder)
+            guard manual else { return }
             if token.isCancelled {
-                app.flash("已停止识别")
+                app?.flash("已停止识别")
             } else {
-                app.flash("识别完成，共 \(targets.count) 个容器")
+                app?.flash("识别完成，共 \(targets.count) 个容器")
             }
         }
     }
 
+    private func autoResolveLabelsIfNeeded() {
+        guard AppSettings.autoResolveLabels,
+              isRootContainer,
+              !autoLabelSuppressed,
+              labelTask == nil,
+              items.contains(where: { $0.isDirectory && $0.identifier == nil }) else { return }
+        startLabelResolution(app: nil, manual: false)
+    }
+
     func stopLabelResolution() {
+        autoLabelSuppressed = true
         labelToken?.cancel()
     }
 

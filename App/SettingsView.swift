@@ -12,6 +12,7 @@ struct SettingsView: View {
     @ObservedObject private var catalog = Catalog.shared
 
     @AppStorage(SettingsKey.showHidden) private var showHidden = false
+    @AppStorage(SettingsKey.autoResolveLabels) private var autoResolveLabels = true
     @AppStorage(SettingsKey.foldersFirst) private var foldersFirst = true
     @AppStorage(SettingsKey.sortKey) private var sortRaw = SortKey.name.rawValue
     @AppStorage(SettingsKey.sortAscending) private var sortAscending = true
@@ -141,6 +142,7 @@ struct SettingsView: View {
     private var browsingSection: some View {
         Section {
             Toggle("显示隐藏文件", isOn: $showHidden)
+            Toggle("扫描后自动识别容器名称", isOn: $autoResolveLabels)
             Toggle("文件夹优先", isOn: $foldersFirst)
             Picker("默认排序", selection: $sortRaw) {
                 ForEach(SortKey.allCases) { key in
