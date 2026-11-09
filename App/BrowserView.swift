@@ -26,7 +26,6 @@ struct BrowserView: View {
         }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonDisplayMode(.minimal)
         .searchable(text: $model.query,
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "筛选当前目录")
