@@ -12,14 +12,6 @@ enum LoadState: Equatable {
     case refreshing
     case loaded
     case failed(String)
-
-    var isLoading: Bool { self == .loading || self == .refreshing }
-}
-
-struct Crumb: Identifiable, Hashable {
-    let name: String
-    let path: String
-    var id: String { path }
 }
 
 struct LabelProgress: Equatable {
@@ -57,8 +49,8 @@ struct SheetPayload: Identifiable {
 
 @MainActor
 final class BrowserModel: ObservableObject {
-    let startPath: String
-    @Published private(set) var path: String
+    let path: String
+
     @Published private(set) var title: String
     @Published private(set) var items: [FSItem] = []
     @Published private(set) var state: LoadState = .idle
@@ -66,7 +58,6 @@ final class BrowserModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var selectionMode = false
     @Published var selected: Set<String> = []
-    @Published var scanStatus: ScanStatus?
     @Published var labelProgress: LabelProgress?
     @Published var sheet: SheetPayload?
     @Published var busy: String?
@@ -78,14 +69,13 @@ final class BrowserModel: ObservableObject {
     private let catalog = Catalog.shared
     private var started = false
     private var loadGeneration = 0
-    private var scanToken: CancelToken?
+    private var rootUsesIndex = false
     private var labelToken: CancelToken?
     private var labelTask: Task<Void, Never>?
     private var autoLabelSuppressed = false
 
     init(target: BrowseTarget) {
         let canonical = PathTool.canonical(target.path)
-        startPath = canonical
         path = canonical
         if let spec = Roots.spec(for: canonical) {
             title = spec.title
@@ -115,56 +105,6 @@ final class BrowserModel: ObservableObject {
 
     var isRootContainer: Bool { Roots.spec(for: path) != nil }
 
-    var canGoUp: Bool {
-        path != "/" && path != startPath && PathTool.isDescendant(path, of: startPath)
-    }
-
-    func crumbTitle(_ crumb: Crumb) -> String {
-        if let spec = Roots.spec(for: crumb.path) { return spec.title }
-        if let label = catalog.label(for: crumb.path), !label.isEmpty { return label }
-        return crumb.name
-    }
-
-    var crumbs: [Crumb] {
-        let start = PathTool.canonical(startPath)
-        if PathTool.isDescendant(path, of: start) {
-            var all = [Crumb(name: PathTool.name(of: start), path: start)]
-            if path != start {
-                let relative = PathTool.relative(path, to: start)
-                var accumulated = start
-                for part in relative.split(separator: "/") {
-                    accumulated = accumulated.hasSuffix("/")
-                        ? accumulated + part
-                        : accumulated + "/" + part
-                    all.append(Crumb(name: String(part), path: accumulated))
-                }
-            }
-            return Array(all.suffix(4))
-        }
-
-        let parts = PathTool.components(of: path)
-        var accumulated = ""
-        var all: [Crumb] = []
-        for part in parts {
-            accumulated += "/" + part
-            all.append(Crumb(name: part, path: accumulated))
-        }
-        return Array(all.suffix(4))
-    }
-
-    var subtitle: String? {
-        let count = visibleItems.count
-        var pieces: [String] = []
-        if count > 0 { pieces.append("\(count) 项") }
-        if let scanStatus {
-            pieces.append("扫描 \(scanStatus.done.formatted()) / \(scanStatus.total.formatted())")
-        }
-        if let labelProgress {
-            pieces.append("识别 \(labelProgress.done)/\(labelProgress.total)")
-        }
-        return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
-    }
-
     // MARK: - Lifecycle
 
     func start() async {
@@ -173,26 +113,11 @@ final class BrowserModel: ObservableObject {
         await load(forceScan: false)
     }
 
-    func stop() {
-        cancelBackgroundWork()
-    }
-
-    private func cancelBackgroundWork() {
-        scanToken?.cancel()
-        scanToken = nil
-        scanStatus = nil
-        labelToken?.cancel()
-        labelToken = nil
-        labelTask?.cancel()
-        labelTask = nil
-        labelProgress = nil
-    }
-
     func refresh() async {
-        if isRootContainer {
-            await load(forceScan: true)
+        if let spec = Roots.spec(for: path) {
+            await loadRoot(spec, forceScan: true)
         } else {
-            await load(forceScan: false)
+            await loadDirectory()
         }
     }
 
@@ -201,12 +126,20 @@ final class BrowserModel: ObservableObject {
     func load(forceScan: Bool) async {
         loadGeneration += 1
         let generation = loadGeneration
-        let current = path
 
-        if let spec = Roots.spec(for: current) {
+        if let spec = Roots.spec(for: path) {
             await loadRoot(spec, forceScan: forceScan, generation: generation)
             return
         }
+        await loadDirectory(generation: generation)
+    }
+
+    private func loadDirectory(generation: Int? = nil) async {
+        let currentGeneration = generation ?? {
+            loadGeneration += 1
+            return loadGeneration
+        }()
+        let current = path
 
         if items.isEmpty { state = .loading } else { state = .refreshing }
         do {
@@ -215,15 +148,16 @@ final class BrowserModel: ObservableObject {
                                             includeHidden: AppSettings.showHidden,
                                             resolveIdentifiers: true)
             }.value
-            guard generation == loadGeneration, path == current else { return }
+            guard currentGeneration == loadGeneration else { return }
             absorbIdentifiers(from: loaded)
-            items = Sorter.sorted(enrich(loaded), order: sortOrder)
+            let sorted = Sorter.sorted(enrich(loaded), order: sortOrder)
+            items = sorted
+            let valid = Set(sorted.map { $0.path })
+            selected.formIntersection(valid)
             state = .loaded
-            selectionMode = false
-            selected.removeAll()
             resolveLabel(for: current)
         } catch {
-            guard generation == loadGeneration, path == current else { return }
+            guard currentGeneration == loadGeneration else { return }
             if items.isEmpty {
                 state = .failed(error.localizedDescription)
             } else {
@@ -243,6 +177,7 @@ final class BrowserModel: ObservableObject {
             items = []
             state = .loading
         }
+        rootUsesIndex = true
 
         if spec.access == .list {
             do {
@@ -251,122 +186,70 @@ final class BrowserModel: ObservableObject {
                                                 includeHidden: true,
                                                 resolveIdentifiers: true)
                 }.value
-                guard generation == loadGeneration, path == spec.path else { return }
+                guard generation == loadGeneration else { return }
                 absorbIdentifiers(from: listed)
-                items = Sorter.sorted(enrich(listed), order: sortOrder)
+                let sorted = Sorter.sorted(enrich(listed), order: sortOrder)
+                items = sorted
+                let valid = Set(sorted.map { $0.path })
+                selected.formIntersection(valid)
                 state = .loaded
-                selectionMode = false
-                selected.removeAll()
+                rootUsesIndex = false
                 autoResolveLabelsIfNeeded()
                 return
             } catch {
                 Log.info("parent listing failed for \(spec.path): \(error.localizedDescription)")
-                if cached.isEmpty || forceScan {
-                    let fullScan = cached.isEmpty || (forceScan && AppSettings.maxInodeOverride != nil)
-                    await scan(spec: spec, full: fullScan, generation: generation)
-                    return
-                }
-                autoResolveLabelsIfNeeded()
-                return
             }
         }
 
-        if cached.isEmpty || forceScan {
-            let fullScan = cached.isEmpty || (forceScan && AppSettings.maxInodeOverride != nil)
-            await scan(spec: spec, full: fullScan, generation: generation)
-        } else {
-            autoResolveLabelsIfNeeded()
-        }
-    }
-
-    private func scan(spec: RootSpec, full: Bool, generation: Int) async {
-        guard scanToken == nil else { return }
-        let record = catalog.scanRecord(for: spec.path)
-        let watermark = record?.watermark ?? 0
-        let baseline = AppSettings.maxInodeOverride ?? ContainerScanner.shared.baselineInode()
-        guard baseline > 0 else {
-            errorMessage = "无法确定 inode 上限。请在设置里填写一个上限，或先让 App 创建临时文件。"
-            state = .loaded
-            return
-        }
-        var start: UInt64 = full ? 1 : min(watermark + 1, baseline)
-        if !full && watermark == 0 { start = 1 }
-        let end = baseline
-        guard end >= start else {
-            state = .loaded
-            return
-        }
-
-        let token = CancelToken()
-        scanToken = token
-        scanStatus = ScanStatus(done: 0, total: end - start + 1, started: Date())
-        Log.info("scan \(spec.path) \(start)…\(end)")
-
-        let root = spec.path
-        let found = await Task.detached(priority: .userInitiated) {
-            ContainerScanner.shared.scan(root: root, start: start, end: end, token: token) { done in
-                Task { @MainActor [weak self] in
-                    guard let self, self.scanToken === token, var status = self.scanStatus else { return }
-                    let processed = done >= start ? done - start + 1 : 0
-                    status.done = min(status.total, processed)
-                    self.scanStatus = status
+        let recordExists = catalog.scanRecord(for: spec.path) != nil
+        let needsScan = forceScan || !recordExists || ContainerIndex.shared.shouldRefreshOnOpen
+        var scanError: Error?
+        if needsScan {
+            do {
+                let full = forceScan && AppSettings.maxInodeOverride != nil
+                _ = try await ContainerIndex.shared.ensureScanned(full: full)
+            } catch let error as ContainerIndexError {
+                if case .cancelled = error {
+                    Log.info("index scan cancelled")
+                } else {
+                    scanError = error
                 }
+            } catch {
+                scanError = error
             }
-        }.value
+        }
 
-        guard scanToken === token else { return }
-        scanToken = nil
-        scanStatus = nil
-        if token.isCancelled { return }
-
-        catalog.mergeScan(root: spec.path, paths: found, watermark: end, replace: full)
-        guard generation == loadGeneration, path == spec.path else { return }
+        guard generation == loadGeneration else { return }
         let refreshed = catalog.items(for: spec.path)
         items = Sorter.sorted(refreshed, order: sortOrder)
-        state = .loaded
-        selectionMode = false
-        selected.removeAll()
+        let valid = Set(items.map { $0.path })
+        selected.formIntersection(valid)
+        if let scanError {
+            if items.isEmpty {
+                state = .failed(scanError.localizedDescription)
+            } else {
+                state = .loaded
+                errorMessage = scanError.localizedDescription
+            }
+        } else {
+            state = .loaded
+        }
         autoResolveLabelsIfNeeded()
     }
 
-    func cancelScan() {
-        scanToken?.cancel()
-        scanToken = nil
-        scanStatus = nil
-        if items.isEmpty {
+    func reloadAfterIndexUpdate() {
+        guard rootUsesIndex, let spec = Roots.spec(for: path) else { return }
+        let refreshed = catalog.items(for: spec.path)
+        items = Sorter.sorted(refreshed, order: sortOrder)
+        let valid = Set(items.map { $0.path })
+        selected.formIntersection(valid)
+        if !items.isEmpty || ContainerIndex.shared.progress == nil {
             state = .loaded
         }
+        autoResolveLabelsIfNeeded()
     }
 
-    // MARK: - Navigation
-
-    func open(path newPath: String, title newTitle: String? = nil) {
-        let canonical = PathTool.canonical(newPath)
-        guard canonical != path else { return }
-        cancelBackgroundWork()
-        path = canonical
-        if let spec = Roots.spec(for: canonical) {
-            title = spec.title
-        } else if let known = catalog.label(for: canonical) {
-            title = known
-        } else {
-            title = newTitle ?? PathTool.name(of: canonical)
-        }
-        items = []
-        state = .loading
-        query = ""
-        selectionMode = false
-        selected.removeAll()
-        Task { await load(forceScan: false) }
-    }
-
-    func goUp() {
-        guard canGoUp else { return }
-        let parent = PathTool.parent(of: path)
-        open(path: parent, title: Roots.spec(for: parent)?.title)
-    }
-
-    // MARK: - Title
+    // MARK: - Names
 
     private func resolveLabel(for target: String) {
         if let spec = Roots.spec(for: target) {
@@ -425,13 +308,20 @@ final class BrowserModel: ObservableObject {
         selected = Set(visibleItems.map { $0.path })
     }
 
-    func tap(_ item: FSItem) {
-        if selectionMode {
-            toggle(item)
-        } else if item.isDirectory {
-            open(path: item.path)
-        } else {
-            preview(item)
+    func preview(_ item: FSItem) {
+        guard !item.isDirectory else { return }
+        busy = "准备预览…"
+        Task {
+            do {
+                let url = try await Task.detached(priority: .userInitiated) {
+                    try FileService.shared.exportSingle(path: item.path)
+                }.value
+                busy = nil
+                sheet = SheetPayload(content: .preview(url))
+            } catch {
+                busy = nil
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -592,26 +482,6 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    func preview(_ item: FSItem) {
-        guard !item.isDirectory else {
-            open(path: item.path)
-            return
-        }
-        busy = "准备预览…"
-        Task {
-            do {
-                let url = try await Task.detached(priority: .userInitiated) {
-                    try FileService.shared.exportSingle(path: item.path)
-                }.value
-                busy = nil
-                sheet = SheetPayload(content: .preview(url))
-            } catch {
-                busy = nil
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
     func editText(_ item: FSItem) {
         guard !item.isDirectory else { return }
         sheet = SheetPayload(content: .text(item))
@@ -654,6 +524,8 @@ final class BrowserModel: ObservableObject {
     func presentImporter() {
         sheet = SheetPayload(content: .importer)
     }
+
+    // MARK: - Container names
 
     func startLabelResolution(app: AppModel?, manual: Bool = true) {
         if manual { autoLabelSuppressed = false }

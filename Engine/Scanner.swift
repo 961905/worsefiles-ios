@@ -48,15 +48,17 @@ final class ContainerScanner: @unchecked Sendable {
         return UInt64(info.st_ino)
     }
 
-    func scan(root: String,
+    // One inode walk for all container parents. The C side matches each path
+    // against every prefix, so six roots do not mean six full scans.
+    func scan(roots: [String],
               start: UInt64,
               end: UInt64,
               token: CancelToken,
-              progress: @escaping (UInt64) -> Void) -> [String] {
-        guard end >= 1, end >= start else { return [] }
+              progress: @escaping (UInt64) -> Void) -> [String: [String]] {
+        guard !roots.isEmpty, end >= 1, end >= start else { return [:] }
         let span = end - start + 1
         let chunks = max(1, Int((span + chunkSize - 1) / chunkSize))
-        var results = Set<String>()
+        var results: [String: Set<String>] = [:]
         let lock = NSLock()
         var reported: UInt64 = 0
 
@@ -67,14 +69,16 @@ final class ContainerScanner: @unchecked Sendable {
             if low > end { return }
             let high = min(end, low + chunkSize - 1)
 
-            let found = pathleak_range(root, low, high) ?? []
+            let found = pathleak_roots(roots, low, high) as? [String: [String]] ?? [:]
             if token.isCancelled { return }
 
-            // Chunks finish out of order. Never subtract a smaller chunk
-            // index from a larger reported one: UInt64 underflow traps.
             var reportValue: UInt64?
             lock.lock()
-            results.formUnion(found)
+            for (root, paths) in found {
+                results[root, default: []].formUnion(paths)
+            }
+            // Chunks finish out of order. Never subtract a smaller chunk
+            // index from a larger reported one: UInt64 underflow traps.
             let shouldReport = high == end || (high > reported && high - reported >= 600_000)
             if shouldReport {
                 reported = max(reported, high)
@@ -87,6 +91,6 @@ final class ContainerScanner: @unchecked Sendable {
             }
         }
 
-        return Array(results)
+        return results.mapValues { Array($0) }
     }
 }

@@ -34,4 +34,10 @@ NSArray<NSString *> *pathleak(NSString *filter, uint64_t max_inode);
 // window so a refresh only walks what is new.
 NSArray<NSString *> *pathleak_range(NSString *filter, uint64_t from_inode, uint64_t to_inode);
 
+// One inode walk for several container parents. Returns root -> direct child
+// paths. All roots must live on the same filesystem (the data volume).
+NSDictionary<NSString *, NSArray<NSString *> *> *pathleak_roots(NSArray<NSString *> *roots,
+                                                               uint64_t from_inode,
+                                                               uint64_t to_inode);
+
 #endif /* pathleak_h */

@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 struct Favorite: Codable, Identifiable, Hashable {
     var path: String
@@ -36,11 +37,58 @@ final class AppModel: ObservableObject {
     private let favoritesKey = "favorites.v1"
     private let recentsKey = "recents.v1"
     private var noticeTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
+    private var didInitialIndexCheck = false
 
     init() {
         load()
         FileService.shared.prepare()
         Log.info("WorseFiles started, iOS \(Roots.majorVersion)")
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshIndexOnActivate()
+            }
+        }
+    }
+
+    deinit {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
+    }
+
+    func refreshIndexOnLaunch() async {
+        guard !didInitialIndexCheck else { return }
+        didInitialIndexCheck = true
+        guard Catalog.shared.hasSharedScan else { return }
+        await refreshIndex(announce: false)
+    }
+
+    func refreshIndexOnActivate() async {
+        guard Catalog.shared.hasSharedScan else { return }
+        if let last = ContainerIndex.shared.lastCompleted,
+           Date().timeIntervalSince(last) < 2 {
+            return
+        }
+        await refreshIndex(announce: true)
+    }
+
+    private func refreshIndex(announce: Bool) async {
+        do {
+            let summary = try await ContainerIndex.shared.ensureScanned(full: false)
+            if announce && summary.added > 0 {
+                flash("已更新 \(summary.added) 个容器")
+            }
+        } catch let error as ContainerIndexError {
+            if case .cancelled = error { return }
+            Log.error("index refresh: \(error.localizedDescription)")
+        } catch {
+            Log.error("index refresh: \(error.localizedDescription)")
+        }
     }
 
     func open(_ target: BrowseTarget) {

@@ -108,4 +108,8 @@ struct ContainerScanRecord: Codable {
 struct CatalogDisk: Codable {
     var scans: [String: ContainerScanRecord] = [:]
     var labels: [String: String] = [:]
+    // First version of the shared index. Optional so old catalog.json files
+    // still decode without a custom initializer.
+    var sharedScanWatermark: UInt64?
+    var sharedScanDate: Date?
 }

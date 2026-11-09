@@ -3,6 +3,7 @@
 //  WorseFiles
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import UIKit
@@ -11,6 +12,7 @@ import UniformTypeIdentifiers
 struct BrowserView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var index = ContainerIndex.shared
     @StateObject private var model: BrowserModel
 
     init(target: BrowseTarget) {
@@ -19,28 +21,15 @@ struct BrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BreadcrumbBar(model: model)
+            BreadcrumbBar(currentPath: model.path, currentTitle: model.title)
             content
-        }
-        .background {
-            EdgeSwipeBack(onSwipe: goBackOneLevel)
-                .allowsHitTesting(false)
         }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         .searchable(text: $model.query,
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "筛选当前目录")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    goBackOneLevel()
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .accessibilityLabel(model.canGoUp ? "上一级" : "返回主页")
-            }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     model.toggleSelectionMode()
@@ -64,14 +53,14 @@ struct BrowserView: View {
             await model.start()
             app.record(path: model.path, title: model.title)
         }
-        .onChange(of: model.path) { _, _ in
-            app.record(path: model.path, title: model.title)
+        .onAppear {
+            model.reloadAfterIndexUpdate()
         }
         .onChange(of: model.title) { _, _ in
             app.record(path: model.path, title: model.title)
         }
-        .onDisappear {
-            model.stop()
+        .onReceive(NotificationCenter.default.publisher(for: .worseFilesIndexUpdated)) { _ in
+            model.reloadAfterIndexUpdate()
         }
         .alert("操作失败", isPresented: errorBinding) {
             Button("好", role: .cancel) {}
@@ -113,7 +102,9 @@ struct BrowserView: View {
                 .padding(.top, 40)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-        } else if model.items.isEmpty, model.state == .loading, model.scanStatus == nil {
+        } else if model.items.isEmpty,
+                  model.state == .loading,
+                  !(model.isRootContainer && index.progress != nil) {
             VStack(spacing: 10) {
                 ProgressView()
                 Text("读取目录…")
@@ -129,10 +120,10 @@ struct BrowserView: View {
 
     private var fileList: some View {
         List {
-            if let scan = model.scanStatus {
+            if model.isRootContainer, model.items.isEmpty, let scan = index.progress {
                 Section {
                     ScanProgressView(status: scan) {
-                        model.cancelScan()
+                        ContainerIndex.shared.cancel()
                     }
                 }
             }
@@ -165,7 +156,7 @@ struct BrowserView: View {
 
     @ViewBuilder
     private var emptyRow: some View {
-        if model.scanStatus != nil {
+        if model.isRootContainer, index.progress != nil {
             EmptyDirectoryView(symbol: "waveform.path.ecg",
                                title: "扫描中",
                                message: "扫描完成后会列出发现的容器；可以在这里停止。")
@@ -193,7 +184,7 @@ struct BrowserView: View {
 
     private func row(_ item: FSItem) -> some View {
         Button {
-            model.tap(item)
+            openItem(item)
         } label: {
             HStack(spacing: 10) {
                 if model.selectionMode {
@@ -245,7 +236,7 @@ struct BrowserView: View {
     private func contextMenu(for item: FSItem) -> some View {
         if item.isDirectory {
             Button {
-                model.open(path: item.path, title: item.displayName)
+                app.open(BrowseTarget(path: item.path, title: item.displayName))
             } label: {
                 Label("打开", systemImage: "folder")
             }
@@ -319,11 +310,10 @@ struct BrowserView: View {
     @ViewBuilder
     private var toolbarMenu: some View {
         Button {
-            model.goUp()
+            dismiss()
         } label: {
             Label("上一级", systemImage: "arrow.up")
         }
-        .disabled(!model.canGoUp)
 
         Button {
             model.newFolderPrompt()
@@ -507,7 +497,7 @@ struct BrowserView: View {
             PreviewSheet(url: url)
         case .text(let item):
             TextEditorSheet(item: item) {
-                Task { await model.load(forceScan: false) }
+                Task { await model.refresh() }
             }
         case .share(let urls):
             ShareSheet(items: urls) {
@@ -531,15 +521,13 @@ struct BrowserView: View {
 
     // MARK: - Helpers
 
-    private func goBackOneLevel() {
-        guard model.sheet == nil,
-              model.errorMessage == nil,
-              !model.confirmDelete,
-              model.busy == nil else { return }
-        if model.canGoUp {
-            model.goUp()
+    private func openItem(_ item: FSItem) {
+        if model.selectionMode {
+            model.toggle(item)
+        } else if item.isDirectory {
+            app.open(BrowseTarget(path: item.path, title: item.displayName))
         } else {
-            dismiss()
+            model.preview(item)
         }
     }
 
@@ -584,7 +572,18 @@ struct BrowserView: View {
 // MARK: - Breadcrumb
 
 struct BreadcrumbBar: View {
-    @ObservedObject var model: BrowserModel
+    @EnvironmentObject private var app: AppModel
+    @ObservedObject private var catalog = Catalog.shared
+
+    let currentPath: String
+    let currentTitle: String
+
+    private struct Item: Identifiable {
+        let title: String
+        let path: String
+        let index: Int
+        var id: String { "\(index)|\(path)" }
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -594,39 +593,76 @@ struct BreadcrumbBar: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .padding(.trailing, 2)
-                    ForEach(model.crumbs) { crumb in
-                        if crumb.id != model.crumbs.first?.id {
+
+                    ForEach(items) { item in
+                        if item.index != items.first?.index {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 8, weight: .semibold))
                                 .foregroundStyle(.quaternary)
                         }
                         Button {
-                            model.open(path: crumb.path)
+                            pop(to: item)
                         } label: {
-                            Text(model.crumbTitle(crumb))
+                            Text(item.title)
                                 .font(.caption)
                                 .lineLimit(1)
-                                .foregroundStyle(crumb.id == model.crumbs.last?.id ? Color.primary : Color.secondary)
+                                .foregroundStyle(item.index == app.navPath.count - 1 ? Color.primary : Color.secondary)
                         }
                         .buttonStyle(.plain)
-                        .id(crumb.id)
+                        .id(item.id)
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
             }
             .onAppear {
-                if let last = model.crumbs.last { proxy.scrollTo(last.id, anchor: .trailing) }
+                scrollToEnd(proxy)
             }
-            .onChange(of: model.path) { _, _ in
-                if let last = model.crumbs.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .trailing)
-                    }
-                }
+            .onChange(of: app.navPath) { _, _ in
+                scrollToEnd(proxy)
             }
         }
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         Divider()
+    }
+
+    private var items: [Item] {
+        var list: [Item] = []
+        for (index, target) in app.navPath.enumerated() {
+            let title: String
+            if PathTool.canonical(target.path) == currentPath, !currentTitle.isEmpty {
+                title = currentTitle
+            } else if let spec = Roots.spec(for: target.path) {
+                title = spec.title
+            } else if let label = catalog.label(for: target.path), !label.isEmpty {
+                title = label
+            } else if let targetTitle = target.title, !targetTitle.isEmpty {
+                title = targetTitle
+            } else {
+                title = PathTool.name(of: target.path)
+            }
+            list.append(Item(title: title, path: target.path, index: index))
+        }
+
+        if list.isEmpty {
+            let title = currentTitle.isEmpty ? PathTool.name(of: currentPath) : currentTitle
+            list = [Item(title: title, path: currentPath, index: 0)]
+        }
+        let start = max(0, list.count - 4)
+        return Array(list[start...])
+    }
+
+    private func scrollToEnd(_ proxy: ScrollViewProxy) {
+        guard let last = items.last else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(last.id, anchor: .trailing)
+        }
+    }
+
+    private func pop(to item: Item) {
+        guard item.index < app.navPath.count - 1 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            app.navPath = Array(app.navPath.prefix(item.index + 1))
+        }
     }
 }

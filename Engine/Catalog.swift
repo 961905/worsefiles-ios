@@ -72,6 +72,9 @@ final class Catalog: ObservableObject {
         scanRecord(for: root)?.paths.count ?? 0
     }
 
+    var sharedWatermark: UInt64 { disk.sharedScanWatermark ?? 0 }
+    var hasSharedScan: Bool { disk.sharedScanWatermark != nil }
+
     func items(for root: String) -> [FSItem] {
         let key = PathTool.canonical(root)
         guard let record = disk.scans[key] else { return [] }
@@ -165,9 +168,42 @@ final class Catalog: ObservableObject {
         store.save(next)
     }
 
+    // Merge one root walk into every root record and advance the shared inode
+    // watermark once. Returns the number of paths that were not cached before.
+    @discardableResult
+    func mergeRootScan(results: [String: [String]],
+                       roots: [String],
+                       watermark: UInt64,
+                       replace: Bool) -> Int {
+        var next = disk
+        var added = 0
+        for root in roots {
+            let key = PathTool.canonical(root)
+            let paths = results[key] ?? results[root] ?? []
+            var record = next.scans[key] ?? ContainerScanRecord(paths: [], watermark: 0, updated: nil)
+            let before = record.paths.count
+            if replace {
+                record.paths = paths.sorted()
+            } else {
+                record.paths = Array(Set(record.paths).union(paths)).sorted()
+            }
+            added += max(0, record.paths.count - before)
+            record.watermark = max(record.watermark, watermark)
+            record.updated = Date()
+            next.scans[key] = record
+        }
+        next.sharedScanWatermark = max(next.sharedScanWatermark ?? 0, watermark)
+        next.sharedScanDate = Date()
+        disk = next
+        store.save(next)
+        return added
+    }
+
     func clearScans() {
         var next = disk
         next.scans.removeAll()
+        next.sharedScanWatermark = nil
+        next.sharedScanDate = nil
         disk = next
         store.save(next)
         Log.info("cleared scan cache")

@@ -42,6 +42,9 @@ struct RootView: View {
             .navigationDestination(for: BrowseTarget.self) { target in
                 BrowserView(target: target)
             }
+            .task {
+                await app.refreshIndexOnLaunch()
+            }
             .sheet(item: $activeSheet) { sheet in
                 Group {
                     switch sheet {

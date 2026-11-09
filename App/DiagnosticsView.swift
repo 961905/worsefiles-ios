@@ -28,6 +28,13 @@ struct DiagnosticsContent: View {
     @State private var logText = ""
     @State private var running = true
     @State private var copied = false
+    @State private var copiedLog = false
+    @State private var exportFile: ExportFile?
+
+    private struct ExportFile: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
 
     var body: some View {
         List {
@@ -74,6 +81,10 @@ struct DiagnosticsContent: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+            } footer: {
+                if let path = Log.filePath {
+                    Text("文件：\(path)（Documents，可在“文件”App 或应用内 Documents 查看）")
+                }
             }
 
             Section {
@@ -93,9 +104,33 @@ struct DiagnosticsContent: View {
                 }
                 .disabled(running || lines.isEmpty)
 
+                Button {
+                    let text = Log.exportText
+                    if text.isEmpty {
+                        app.flash("暂无日志")
+                    } else {
+                        UIPasteboard.general.string = text
+                        copiedLog = true
+                        app.flash("已复制日志")
+                    }
+                } label: {
+                    Label(copiedLog ? "日志已复制" : "复制日志", systemImage: "doc.on.doc")
+                }
+
+                Button {
+                    if let url = Log.exportFileURL() {
+                        exportFile = ExportFile(url: url)
+                    } else {
+                        app.flash("暂无日志")
+                    }
+                } label: {
+                    Label("导出日志", systemImage: "square.and.arrow.up")
+                }
+
                 Button(role: .destructive) {
                     Log.clear()
                     logText = ""
+                    copiedLog = false
                     app.flash("日志已清空")
                 } label: {
                     Label("清空日志", systemImage: "trash")
@@ -120,11 +155,18 @@ struct DiagnosticsContent: View {
         .task {
             await run()
         }
+        .sheet(item: $exportFile) { payload in
+            ShareSheet(items: [payload.url]) {
+                exportFile = nil
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private func run() async {
         running = true
         copied = false
+        copiedLog = false
         let result = await Task.detached(priority: .userInitiated) {
             FileService.shared.diagnose()
         }.value
