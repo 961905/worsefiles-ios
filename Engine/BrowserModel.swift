@@ -153,9 +153,7 @@ final class BrowserModel: ObservableObject {
             guard currentGeneration == loadGeneration else { return }
             absorbIdentifiers(from: loaded)
             let sorted = Sorter.sorted(enrich(loaded), order: sortOrder)
-            items = sorted
-            let valid = Set(sorted.map { $0.path })
-            selected.formIntersection(valid)
+            applyItems(sorted)
             state = .loaded
             resolveLabel(for: current)
         } catch {
@@ -173,10 +171,10 @@ final class BrowserModel: ObservableObject {
     private func loadRoot(_ spec: RootSpec, forceScan: Bool, generation: Int) async {
         let cached = catalog.items(for: spec.path)
         if !cached.isEmpty {
-            items = Sorter.sorted(cached, order: sortOrder)
+            applyItems(Sorter.sorted(cached, order: sortOrder))
             state = .loaded
         } else {
-            items = []
+            applyItems([])
             state = .loading
         }
         rootUsesIndex = true
@@ -191,9 +189,7 @@ final class BrowserModel: ObservableObject {
                 guard generation == loadGeneration else { return }
                 absorbIdentifiers(from: listed)
                 let sorted = Sorter.sorted(enrich(listed), order: sortOrder)
-                items = sorted
-                let valid = Set(sorted.map { $0.path })
-                selected.formIntersection(valid)
+                applyItems(sorted)
                 state = .loaded
                 rootUsesIndex = false
                 autoResolveLabelsIfNeeded()
@@ -223,9 +219,7 @@ final class BrowserModel: ObservableObject {
 
         guard generation == loadGeneration else { return }
         let refreshed = catalog.items(for: spec.path)
-        items = Sorter.sorted(refreshed, order: sortOrder)
-        let valid = Set(items.map { $0.path })
-        selected.formIntersection(valid)
+        applyItems(Sorter.sorted(refreshed, order: sortOrder))
         if let scanError {
             if items.isEmpty {
                 state = .failed(scanError.localizedDescription)
@@ -242,9 +236,7 @@ final class BrowserModel: ObservableObject {
     func reloadAfterIndexUpdate() {
         guard rootUsesIndex, let spec = Roots.spec(for: path) else { return }
         let refreshed = catalog.items(for: spec.path)
-        items = Sorter.sorted(refreshed, order: sortOrder)
-        let valid = Set(items.map { $0.path })
-        selected.formIntersection(valid)
+        applyItems(Sorter.sorted(refreshed, order: sortOrder))
         if !items.isEmpty || ContainerIndex.shared.progress == nil {
             state = .loaded
         }
@@ -292,6 +284,14 @@ final class BrowserModel: ObservableObject {
     }
 
     // MARK: - Selection
+
+    private func applyItems(_ newItems: [FSItem]) {
+        if newItems != items {
+            items = newItems
+        }
+        let valid = Set(newItems.map { $0.path })
+        selected.formIntersection(valid)
+    }
 
     func toggleSelectionMode() {
         selectionMode.toggle()
