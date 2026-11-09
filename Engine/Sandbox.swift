@@ -25,7 +25,7 @@ enum SandboxError: LocalizedError {
         case .notConsumed:
             return "没有可用的沙盒扩展。"
         case .missingGroup(let group):
-            return "App Group 不可用：\(group)。检查 entitlements、描述文件和设置里的 Group ID 是否一致。"
+            return "App Group 不可用：\(group)。当前签名没有授予可用的 App Groups entitlement，或容器无法打开。"
         case .missingFunctions:
             return "无法解析 containermanager 或 sandbox_extension 函数，当前系统可能不受支持。"
         case .queryFailed:

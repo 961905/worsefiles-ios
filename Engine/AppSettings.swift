@@ -6,7 +6,6 @@
 import Foundation
 
 enum SettingsKey {
-    static let appGroupID = "appGroupID"
     static let showHidden = "showHidden"
     static let foldersFirst = "foldersFirst"
     static let sortKey = "sortKey"
@@ -17,21 +16,9 @@ enum SettingsKey {
 enum AppSettings {
     static let defaultGroupID = "group.com.kestrel.worsefiles"
 
-    static var appGroupID: String {
-        get {
-            // Absent means "use the nib default"; an explicitly cleared field
-            // means no group, and the runtime should say so instead of
-            // silently falling back to an identifier the user removed.
-            guard let stored = UserDefaults.standard.object(forKey: SettingsKey.appGroupID) as? String else {
-                return defaultGroupID
-            }
-            return stored.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        set {
-            UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines),
-                                      forKey: SettingsKey.appGroupID)
-        }
-    }
+    // Never a user-editable preference: the group is whatever the signer
+    // actually granted. SandboxBroker and FileService ask this every time.
+    static var appGroupID: String { AppGroupResolver.active }
 
     static var showHidden: Bool {
         get { UserDefaults.standard.bool(forKey: SettingsKey.showHidden) }

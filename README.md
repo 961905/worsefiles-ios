@@ -33,7 +33,7 @@
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
 - 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
 - 收藏、最近访问、路径面包屑、前进/后退/上级。
-- 设置：App Group ID、隐藏文件、默认排序、inode 上限、缓存清理、句柄释放、诊断与日志。
+- 设置：App Group 自动检测、隐藏文件、默认排序、inode 上限、缓存清理、句柄释放、诊断与日志。
 
 ## 构建
 
@@ -61,15 +61,15 @@ open WorseFiles.xcodeproj
 
 1. 选择自己的 Team。
 2. 新建一个 App Group（Xcode 会注册到你的账号），例如 `group.com.yourname.worsefiles`。
-3. 把 `App/WorseFiles.entitlements` 里的 group 改成同一个值。用一个只给 WorseFiles 的 App Group，不要和其他 App 或扩展共用：每次容器查询都会删除并重建该组的 `Library/Caches`。
+3. 把 `App/WorseFiles.entitlements` 里的 group 改成自己的值，或保留默认。应用从签名里自动读取 App Group，不需要在应用内填写。用一个只给 WorseFiles 的 App Group，不要和其他 App 或扩展共用：每次容器查询都会删除并重建该组的 `Library/Caches`。
 4. 把 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 改成自己唯一的 bundle id；如果已经生成过项目，直接改 target 的 Bundle Identifier。
 5. 安装到 iPhone。App Group 由签名描述文件提供，运行时不会弹系统权限框。
 
-应用内“设置 → App Group”里的 ID 必须与 entitlements 完全一致，否则 `worse_query` 返回 `-1`。改了 group 之后应用会释放所有旧句柄。
+应用启动后从自己的代码签名读取 App Groups entitlement，并在设置页显示检测结果。若显示不可用，检查重签是否真的授予了 App Group，而不是去改应用内字段。`worse_query` 在拿不到可用 group 时返回 `-1`。
 
 ## 使用
 
-1. 打开“容器文件”。顶部状态显示 App Group 是否可用；版本落在测试区间内才显示“环境就绪”。
+1. 打开“容器文件”。顶部状态显示 App Group 是否可用（从签名自动检测）；版本落在测试区间内才显示“环境就绪”。
 2. 点“应用数据”。第一次需要 inode 扫描，进度条会显示当前区间；结果会写进缓存，之后打开先显示缓存，下拉刷新做增量扫描。
 3. 进入一个 UUID 目录，标题会尝试解析成 bundle identifier；返回父目录后该行也会显示名称。
 4. 长按或左滑文件行：信息、重命名、拷贝/剪切、制作副本、分享、删除；目录还能收藏。底部剪贴板条可粘贴到当前目录。
@@ -108,6 +108,7 @@ WorseFiles 在它的外面加了两层：
 - 沙盒扩展可能按路径签发。读取、预览、导出单个文件时会分别尝试目标路径与父目录；目录递归复制/导出仍依赖目录扩展覆盖子树，失败会明确报错。
 - 文本编辑上限 2 MB；超过时只读显示前 2 MB，保存禁用，避免截断。
 - 预览和分享会把目标复制到 App 临时目录，大目录/大文件会占磁盘并耗时。
+- App Group 由签名授予，应用只读取、不要求填写；没有该 entitlement 的签名无法使用容器路径。
 - 没有网络、上传、越狱、内核利用或绕过签名。
 - 不保证在所有 26.x/27.x 小版本上都能拿到扩展；`worse_query` 本身有版本窗口。
 

@@ -11,13 +11,13 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var catalog = Catalog.shared
 
-    @AppStorage(SettingsKey.appGroupID) private var groupID = AppSettings.defaultGroupID
     @AppStorage(SettingsKey.showHidden) private var showHidden = false
     @AppStorage(SettingsKey.foldersFirst) private var foldersFirst = true
     @AppStorage(SettingsKey.sortKey) private var sortRaw = SortKey.name.rawValue
     @AppStorage(SettingsKey.sortAscending) private var sortAscending = true
     @AppStorage(SettingsKey.maxInode) private var maxInode = ""
 
+    @State private var groupSnapshot = AppGroupResolver.snapshot()
     @State private var clearTarget: ClearTarget?
 
     private enum ClearTarget: String, Identifiable, Equatable {
@@ -42,8 +42,8 @@ struct SettingsView: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .onChange(of: groupID) { _, _ in
-                FileService.shared.releaseAllExtensions()
+            .onAppear {
+                groupSnapshot = AppGroupResolver.snapshot(refresh: true)
             }
             .confirmationDialog("清除缓存",
                                 isPresented: Binding(
@@ -74,16 +74,19 @@ struct SettingsView: View {
 
     private var groupSection: some View {
         Section {
-            TextField("group.example.app", text: $groupID)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(.body, design: .monospaced))
-            LabeledContent("状态") {
+            LabeledContent("当前使用") {
+                Text(groupSnapshot.active)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .textSelection(.enabled)
+            }
+            LabeledContent("容器访问") {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(groupAvailable ? Color.green : Color.orange)
+                        .fill(groupSnapshot.hasAccessible ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
-                    Text(groupAvailable ? "可用" : "不可用")
+                    Text(groupSnapshot.hasAccessible ? "可用" : "不可用")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -92,6 +95,30 @@ struct SettingsView: View {
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+            }
+            if groupSnapshot.groups.isEmpty {
+                Label("签名里没有读到 App Group。重签时必须授予 App Groups entitlement。",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            } else {
+                ForEach(groupSnapshot.groups, id: \.self) { group in
+                    HStack(spacing: 7) {
+                        Image(systemName: groupSnapshot.accessible.contains(group)
+                              ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(groupSnapshot.accessible.contains(group)
+                                             ? Color.green : Color.secondary)
+                        Text(group)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            Button {
+                groupSnapshot = AppGroupResolver.refresh()
+                app.flash("已重新检测 App Group")
+            } label: {
+                Label("重新检测", systemImage: "arrow.clockwise")
             }
             Button {
                 FileService.shared.releaseAllExtensions()
@@ -107,7 +134,7 @@ struct SettingsView: View {
         } header: {
             Text("App Group")
         } footer: {
-            Text("在 Xcode 的 Signing & Capabilities 添加 App Groups，并把同一标识写进 entitlements 与这里。免费 Apple ID 通常不支持 App Groups。标识不一致时 worse_query 会返回 -1。")
+            Text("应用从自己的代码签名读取 App Group，不需要手动填写。重签时必须授予 App Groups entitlement；免费 Apple ID 通常不支持 App Groups。")
         }
     }
 
@@ -188,15 +215,9 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
-    private var effectiveGroup: String {
-        groupID.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var groupContainerURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: effectiveGroup)
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupSnapshot.active)
     }
-
-    private var groupAvailable: Bool { groupContainerURL != nil }
 
     private var escapeStatus: String {
         if !Roots.escapeSupported { return "不可用" }

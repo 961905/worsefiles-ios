@@ -442,7 +442,7 @@ final class FileService: @unchecked Sendable {
             "txt", "md", "markdown", "json", "plist", "xml", "yml", "yaml", "html", "htm",
             "css", "js", "ts", "swift", "m", "mm", "h", "c", "cc", "cpp", "py", "rb", "sh",
             "zsh", "ini", "conf", "log", "csv", "tsv", "sql", "strings", "entitlements",
-            "pbxproj", "xcconfig", "gradle", "toml", "rtf", "css", "properties"
+            "pbxproj", "xcconfig", "gradle", "toml", "rtf", "properties"
         ]
         return textExtensions.contains(ext)
     }
@@ -455,8 +455,11 @@ final class FileService: @unchecked Sendable {
             let version = ProcessInfo.processInfo.operatingSystemVersion
             lines.append("系统版本：iOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)")
             lines.append("支持区间：iOS 26.0–26.7.2 / 27.2（worse_query）")
-            let group = AppSettings.appGroupID
-            lines.append("App Group ID：\(group)")
+            let snapshot = AppGroupResolver.snapshot(refresh: true)
+            lines.append("App Group（自动检测）：\(snapshot.active)")
+            lines.append("签名 App Groups：\(snapshot.groups.isEmpty ? "无或不可读" : snapshot.groups.joined(separator: ", "))")
+            lines.append("可访问的 App Group：\(snapshot.accessible.isEmpty ? "无" : snapshot.accessible.joined(separator: ", "))")
+            let group = snapshot.active
             let groupURL = manager.containerURL(forSecurityApplicationGroupIdentifier: group)
             lines.append("App Group 容器：\(groupURL?.path ?? "不可用")")
 

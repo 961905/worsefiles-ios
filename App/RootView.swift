@@ -69,7 +69,7 @@ struct RootView: View {
     private var environmentSection: some View {
         Section {
             Button {
-                activeSheet = groupAvailable ? .diagnostics : .settings
+                activeSheet = .diagnostics
             } label: {
                 if !Roots.escapeSupported {
                     RootRow(symbol: "exclamationmark.shield.fill",
@@ -93,7 +93,7 @@ struct RootView: View {
                     RootRow(symbol: "exclamationmark.triangle.fill",
                             tint: .orange,
                             title: "App Group 不可用",
-                            subtitle: "在设置里填写自己的 Group ID，并让 entitlements 与签名描述文件一致。",
+                            subtitle: "当前签名没有可用的 App Group。用包含 App Groups 的配置重新签名；应用会自动读取，不需要手填。",
                             detail: "设置")
                 }
             }
@@ -101,7 +101,7 @@ struct RootView: View {
         } header: {
             Text("环境")
         } footer: {
-            Text("仅用于自己的设备与容器调试。系统版本需在 iOS 26.0–26.7.2 或 27.2。")
+            Text("仅用于自己的设备与容器调试。系统版本需在 iOS 26.0–26.7.2 或 27.2；App Group 由签名提供并自动读取。")
         }
     }
 
