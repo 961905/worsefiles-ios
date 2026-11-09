@@ -57,6 +57,7 @@ struct SheetPayload: Identifiable {
 
 @MainActor
 final class BrowserModel: ObservableObject {
+    let startPath: String
     @Published private(set) var path: String
     @Published private(set) var title: String
     @Published private(set) var items: [FSItem] = []
@@ -75,8 +76,6 @@ final class BrowserModel: ObservableObject {
     @Published var pendingDelete: [FSItem] = []
 
     private let catalog = Catalog.shared
-    private var backStack: [String] = []
-    private var forwardStack: [String] = []
     private var started = false
     private var loadGeneration = 0
     private var scanToken: CancelToken?
@@ -86,6 +85,7 @@ final class BrowserModel: ObservableObject {
 
     init(target: BrowseTarget) {
         let canonical = PathTool.canonical(target.path)
+        startPath = canonical
         path = canonical
         if let spec = Roots.spec(for: canonical) {
             title = spec.title
@@ -115,9 +115,9 @@ final class BrowserModel: ObservableObject {
 
     var isRootContainer: Bool { Roots.spec(for: path) != nil }
 
-    var canGoBack: Bool { !backStack.isEmpty }
-    var canGoForward: Bool { !forwardStack.isEmpty }
-    var canGoUp: Bool { path != "/" }
+    var canGoUp: Bool {
+        path != "/" && path != startPath && PathTool.isDescendant(path, of: startPath)
+    }
 
     func crumbTitle(_ crumb: Crumb) -> String {
         if let spec = Roots.spec(for: crumb.path) { return spec.title }
@@ -126,6 +126,22 @@ final class BrowserModel: ObservableObject {
     }
 
     var crumbs: [Crumb] {
+        let start = PathTool.canonical(startPath)
+        if PathTool.isDescendant(path, of: start) {
+            var all = [Crumb(name: PathTool.name(of: start), path: start)]
+            if path != start {
+                let relative = PathTool.relative(path, to: start)
+                var accumulated = start
+                for part in relative.split(separator: "/") {
+                    accumulated = accumulated.hasSuffix("/")
+                        ? accumulated + part
+                        : accumulated + "/" + part
+                    all.append(Crumb(name: String(part), path: accumulated))
+                }
+            }
+            return Array(all.suffix(4))
+        }
+
         let parts = PathTool.components(of: path)
         var accumulated = ""
         var all: [Crumb] = []
@@ -328,8 +344,6 @@ final class BrowserModel: ObservableObject {
         let canonical = PathTool.canonical(newPath)
         guard canonical != path else { return }
         cancelBackgroundWork()
-        backStack.append(path)
-        forwardStack.removeAll()
         path = canonical
         if let spec = Roots.spec(for: canonical) {
             title = spec.title
@@ -346,37 +360,10 @@ final class BrowserModel: ObservableObject {
         Task { await load(forceScan: false) }
     }
 
-    func goBack() {
-        guard let previous = backStack.popLast() else { return }
-        forwardStack.append(path)
-        path = previous
-        resetForHistory()
-    }
-
-    func goForward() {
-        guard let next = forwardStack.popLast() else { return }
-        backStack.append(path)
-        path = next
-        resetForHistory()
-    }
-
     func goUp() {
         guard canGoUp else { return }
         let parent = PathTool.parent(of: path)
         open(path: parent, title: Roots.spec(for: parent)?.title)
-    }
-
-    private func resetForHistory() {
-        cancelBackgroundWork()
-        title = Roots.spec(for: path)?.title
-            ?? catalog.label(for: path)
-            ?? PathTool.name(of: path)
-        items = []
-        state = .loading
-        query = ""
-        selectionMode = false
-        selected.removeAll()
-        Task { await load(forceScan: false) }
     }
 
     // MARK: - Title

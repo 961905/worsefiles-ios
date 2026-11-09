@@ -22,6 +22,10 @@ struct BrowserView: View {
             BreadcrumbBar(model: model)
             content
         }
+        .background {
+            EdgeSwipeBack(onSwipe: goBackOneLevel)
+                .allowsHitTesting(false)
+        }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -31,15 +35,11 @@ struct BrowserView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    if model.canGoBack {
-                        model.goBack()
-                    } else {
-                        dismiss()
-                    }
+                    goBackOneLevel()
                 } label: {
                     Image(systemName: "chevron.left")
                 }
-                .accessibilityLabel(model.canGoBack ? "后退" : "返回主页")
+                .accessibilityLabel(model.canGoUp ? "上一级" : "返回主页")
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -326,22 +326,6 @@ struct BrowserView: View {
         .disabled(!model.canGoUp)
 
         Button {
-            model.goBack()
-        } label: {
-            Label("后退", systemImage: "arrow.uturn.backward")
-        }
-        .disabled(!model.canGoBack)
-
-        Button {
-            model.goForward()
-        } label: {
-            Label("前进", systemImage: "arrow.uturn.forward")
-        }
-        .disabled(!model.canGoForward)
-
-        Divider()
-
-        Button {
             model.newFolderPrompt()
         } label: {
             Label("新建文件夹", systemImage: "folder.badge.plus")
@@ -546,6 +530,18 @@ struct BrowserView: View {
     }
 
     // MARK: - Helpers
+
+    private func goBackOneLevel() {
+        guard model.sheet == nil,
+              model.errorMessage == nil,
+              !model.confirmDelete,
+              model.busy == nil else { return }
+        if model.canGoUp {
+            model.goUp()
+        } else {
+            dismiss()
+        }
+    }
 
     private var errorBinding: Binding<Bool> {
         Binding(get: { model.errorMessage != nil },
