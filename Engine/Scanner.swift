@@ -69,7 +69,7 @@ final class ContainerScanner: @unchecked Sendable {
             if low > end { return }
             let high = min(end, low + chunkSize - 1)
 
-            let found = pathleak_roots(roots, low, high) as? [String: [String]] ?? [:]
+            let found = pathleak_roots(roots, low, high) ?? [:]
             if token.isCancelled { return }
 
             var reportValue: UInt64?

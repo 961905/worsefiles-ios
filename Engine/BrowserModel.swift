@@ -115,7 +115,9 @@ final class BrowserModel: ObservableObject {
 
     func refresh() async {
         if let spec = Roots.spec(for: path) {
-            await loadRoot(spec, forceScan: true)
+            loadGeneration += 1
+            let generation = loadGeneration
+            await loadRoot(spec, forceScan: true, generation: generation)
         } else {
             await loadDirectory()
         }
