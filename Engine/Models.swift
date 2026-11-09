@@ -113,4 +113,7 @@ struct CatalogDisk: Codable {
     var sharedScanWatermark: UInt64?
     var sharedScanDate: Date?
     var scanVersion: Int?
+    // Bundle identifiers seen at the last LaunchServices reconcile.
+    var installedAppIDs: [String]?
+    var installedAppDate: Date?
 }

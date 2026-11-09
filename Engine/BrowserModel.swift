@@ -169,6 +169,10 @@ final class BrowserModel: ObservableObject {
     }
 
     private func loadRoot(_ spec: RootSpec, forceScan: Bool, generation: Int) async {
+        // Opening any container root is a good moment to notice that an app
+        // was installed or removed while the app was in the background.
+        _ = await ContainerIndex.shared.reconcileIfNeeded(minInterval: 15)
+
         let cached = catalog.items(for: spec.path)
         if !cached.isEmpty {
             applyItems(Sorter.sorted(cached, order: sortOrder))

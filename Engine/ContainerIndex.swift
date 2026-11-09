@@ -20,6 +20,14 @@ struct ContainerScanSummary {
     let full: Bool
 }
 
+struct ContainerReconcileSummary {
+    let added: Int
+    let removed: Int
+    let installedApps: Int
+    let installedPaths: Int
+    let usedInstalledList: Bool
+}
+
 enum ContainerIndexError: LocalizedError {
     case noBaseline
     case cancelled
@@ -42,8 +50,15 @@ final class ContainerIndex: ObservableObject {
     @Published private(set) var progress: ScanStatus?
     @Published private(set) var lastCompleted: Date?
     @Published private(set) var lastAdded = 0
+    @Published private(set) var lastReconciled: Date?
+    @Published private(set) var installedAppCount = 0
+    @Published private(set) var installedPathCount = 0
+    @Published private(set) var installedListAvailable = false
 
     private var running: Task<ContainerScanSummary, Error>?
+    private var reconcileTask: Task<ContainerReconcileSummary, Never>?
+    private var lastReconcileAt: Date?
+    private var loggedReconcile = false
     private var token: CancelToken?
 
     var isScanning: Bool { running != nil }
@@ -51,6 +66,156 @@ final class ContainerIndex: ObservableObject {
     var shouldRefreshOnOpen: Bool {
         guard let lastCompleted else { return true }
         return Date().timeIntervalSince(lastCompleted) > 30
+    }
+
+    // Reconcile the index against the live app list. The inode watermark
+    // cannot see an install that reused a freed inode, and it never forgets an
+    // uninstall. LaunchServices fixes both directions; lstat then catches
+    // containers of plugins and daemons that LaunchServices omits.
+    @discardableResult
+    func reconcileIfNeeded(minInterval: TimeInterval = 10) async -> ContainerReconcileSummary? {
+        if reconcileTask == nil,
+           let lastReconcileAt,
+           Date().timeIntervalSince(lastReconcileAt) < minInterval {
+            return nil
+        }
+        if let reconcileTask {
+            return await reconcileTask.value
+        }
+
+        let task = Task { await self.performReconcile() }
+        reconcileTask = task
+        let summary = await task.value
+        reconcileTask = nil
+        return summary
+    }
+
+    private func performReconcile() async -> ContainerReconcileSummary {
+        let started = Date()
+        let catalog = Catalog.shared
+        let roots = Roots.all.map { PathTool.canonical($0.path) }
+        let cachedPaths = roots.flatMap { catalog.scanRecord(for: $0)?.paths ?? [] }
+
+        let snapshot = await Task.detached(priority: .utility) {
+            InstalledApps.snapshot()
+        }.value
+        let apps = snapshot ?? []
+        let hasList = !apps.isEmpty
+
+        // lstat is allowed on container paths even when their contents need an
+        // extension. ENOENT is the one answer that proves the container is gone;
+        // EACCES and everything else keep the row.
+        let missing = await Task.detached(priority: .utility) {
+            Self.missingPaths(cachedPaths)
+        }.value
+        var removed = catalog.prunePaths(Set(missing))
+
+        var added = 0
+        var livePathCount = 0
+
+        if hasList {
+            let pairs: [(String, String)] = apps.compactMap { app in
+                guard let raw = app.dataPath else { return nil }
+                let path = PathTool.canonical(raw)
+                guard roots.contains(PathTool.parent(of: path)) else { return nil }
+                return (path, app.identifier)
+            }
+            let livePathMap = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
+
+            // Same bundle now lives at a different container path. Drop the
+            // old record so the row is not duplicated.
+            var replaced: Set<String> = []
+            for path in cachedPaths {
+                guard let label = catalog.label(for: path),
+                      let livePath = livePathMap[label] else { continue }
+                if PathTool.canonical(path) != livePath {
+                    replaced.insert(PathTool.canonical(path))
+                }
+            }
+            if !replaced.isEmpty {
+                removed += catalog.prunePaths(replaced)
+            }
+
+            var grouped: [String: [String: String]] = [:]
+            for (path, identifier) in livePathMap {
+                grouped[PathTool.parent(of: path), default: [:]][path] = identifier
+            }
+
+            // A few proxies have no dataContainerURL; ask the container
+            // manager only for identifiers the index has never seen.
+            let knownLabels = Set(catalog.disk.labels.values)
+            let resolved = await Task.detached(priority: .utility) {
+                var result: [(String, String)] = []
+                for app in apps where app.dataPath == nil {
+                    guard !knownLabels.contains(app.identifier) else { continue }
+                    guard let path = InstalledApps.containerPath(for: app.identifier) else { continue }
+                    result.append((PathTool.canonical(path), app.identifier))
+                }
+                return result
+            }.value
+
+            for (path, identifier) in resolved {
+                let parent = PathTool.parent(of: path)
+                guard roots.contains(parent) else { continue }
+                grouped[parent, default: [:]][path] = identifier
+            }
+
+            for root in roots {
+                guard let labels = grouped[root], !labels.isEmpty else { continue }
+                added += catalog.addPaths(Array(labels.keys), to: root, labels: labels)
+            }
+            catalog.setInstalledAppIDs(apps.map { $0.identifier })
+
+            var knownPaths = Set(livePathMap.keys)
+            knownPaths.formUnion(resolved.map { $0.0 })
+            livePathCount = knownPaths.count
+        }
+
+        lastReconciled = Date()
+        lastReconcileAt = lastReconciled
+        installedAppCount = apps.count
+        installedPathCount = livePathCount
+        installedListAvailable = hasList
+
+        if !loggedReconcile {
+            loggedReconcile = true
+            if hasList {
+                Log.info("reconcile apps=\(apps.count) paths=\(livePathCount) +\(added) -\(removed)")
+            } else {
+                Log.error("reconcile: installed app list unavailable")
+            }
+        } else if added > 0 || removed > 0 {
+            Log.info("reconcile +\(added) -\(removed)")
+        }
+
+        if added > 0 || removed > 0 {
+            NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
+        }
+
+        if added > 0 || removed > 0 {
+            Log.info("reconcile took \(Int(Date().timeIntervalSince(started) * 1000))ms")
+        }
+
+        return ContainerReconcileSummary(added: added,
+                                         removed: removed,
+                                         installedApps: apps.count,
+                                         installedPaths: livePathCount,
+                                         usedInstalledList: hasList)
+    }
+
+    nonisolated private static func missingPaths(_ paths: [String]) -> [String] {
+        var seen = Set<String>()
+        var missing: [String] = []
+        for raw in paths {
+            let path = PathTool.canonical(raw)
+            guard seen.insert(path).inserted else { continue }
+            var info = stat()
+            let gone = path.withCString { pointer -> Bool in
+                lstat(pointer, &info) != 0 && errno == ENOENT
+            }
+            if gone { missing.append(path) }
+        }
+        return missing
     }
 
     @discardableResult

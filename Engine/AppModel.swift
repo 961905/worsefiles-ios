@@ -70,18 +70,22 @@ final class AppModel: ObservableObject {
 
     func refreshIndexOnActivate() async {
         guard Catalog.shared.hasSharedScan else { return }
-        if let last = ContainerIndex.shared.lastCompleted,
-           Date().timeIntervalSince(last) < 2 {
-            return
-        }
         await refreshIndex(announce: true)
     }
 
     private func refreshIndex(announce: Bool) async {
+        let reconcile = await ContainerIndex.shared.reconcileIfNeeded(minInterval: 5)
         do {
             let summary = try await ContainerIndex.shared.ensureScanned(full: false)
-            if announce && summary.added > 0 {
-                flash("已更新 \(summary.added) 个容器")
+            guard announce else { return }
+            let added = summary.added + (reconcile?.added ?? 0)
+            let removed = reconcile?.removed ?? 0
+            if added > 0 && removed > 0 {
+                flash("已同步：新增 \(added)，移除 \(removed)")
+            } else if removed > 0 {
+                flash("已移除 \(removed) 个失效容器")
+            } else if added > 0 {
+                flash("已更新 \(added) 个容器")
             }
         } catch let error as ContainerIndexError {
             if case .cancelled = error { return }
