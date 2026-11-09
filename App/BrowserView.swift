@@ -236,7 +236,7 @@ struct BrowserView: View {
     private func contextMenu(for item: FSItem) -> some View {
         if item.isDirectory {
             Button {
-                app.open(BrowseTarget(path: item.path, title: item.displayName))
+                push(item)
             } label: {
                 Label("打开", systemImage: "folder")
             }
@@ -521,11 +521,17 @@ struct BrowserView: View {
 
     // MARK: - Helpers
 
+    private func push(_ item: FSItem) {
+        withAnimation(.easeInOut(duration: 0.28)) {
+            app.open(BrowseTarget(path: item.path, title: item.displayName))
+        }
+    }
+
     private func openItem(_ item: FSItem) {
         if model.selectionMode {
             model.toggle(item)
         } else if item.isDirectory {
-            app.open(BrowseTarget(path: item.path, title: item.displayName))
+            push(item)
         } else {
             model.preview(item)
         }
