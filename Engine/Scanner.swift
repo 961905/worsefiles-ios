@@ -70,14 +70,21 @@ final class ContainerScanner: @unchecked Sendable {
             let found = pathleak_range(root, low, high) ?? []
             if token.isCancelled { return }
 
+            // Chunks finish out of order. Never subtract a smaller chunk
+            // index from a larger reported one: UInt64 underflow traps.
+            var reportValue: UInt64?
             lock.lock()
             results.formUnion(found)
-            let shouldReport = high == end || high - reported >= 600_000
+            let shouldReport = high == end || (high > reported && high - reported >= 600_000)
             if shouldReport {
-                reported = high
-                progress(high)
+                reported = max(reported, high)
+                reportValue = reported
             }
             lock.unlock()
+
+            if let reportValue {
+                progress(reportValue)
+            }
         }
 
         return Array(results)

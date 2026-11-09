@@ -286,7 +286,8 @@ final class BrowserModel: ObservableObject {
             ContainerScanner.shared.scan(root: root, start: start, end: end, token: token) { done in
                 Task { @MainActor [weak self] in
                     guard let self, self.scanToken === token, var status = self.scanStatus else { return }
-                    status.done = min(status.total, done - start + 1)
+                    let processed = done >= start ? done - start + 1 : 0
+                    status.done = min(status.total, processed)
                     self.scanStatus = status
                 }
             }
