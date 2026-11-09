@@ -55,6 +55,10 @@ struct BrowserView: View {
         }
         .onAppear {
             model.reloadAfterIndexUpdate()
+            model.resumeAutoLabels()
+        }
+        .onDisappear {
+            model.pauseLabelResolution()
         }
         .onChange(of: model.title) { _, _ in
             app.record(path: model.path, title: model.title)

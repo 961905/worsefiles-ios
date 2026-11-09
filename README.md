@@ -27,7 +27,7 @@
   - App 组 `/private/var/mobile/Containers/Shared/AppGroup`
   - iOS 27：`/private/var/containers/Data/System`、`/private/var/containers/Shared/SystemGroup`
   - 本应用沙盒、Documents、App Group 根目录
-- 应用数据/扩展/守护进程的父目录不可列举时，按 inode 扫描发现容器；一次 inode 遍历同时匹配所有容器根路径，不会为每个入口重复全扫。
+- 应用数据/扩展/守护进程/系统组的父目录不可列举时，按 inode 扫描发现容器；一次扫描按文件系统分组遍历，同时匹配所有容器根路径，不会为每个入口重复全扫。
 - App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
@@ -108,11 +108,11 @@ WorseFiles 在它的外面加了两层：
 ## 边界
 
 - 只访问 `worse_query` 能返回扩展的路径；`/var/containers/Bundle/Application` 不在范围内。
-- 父目录扩展取决于系统版本与容器类型；失败时只能靠 inode 扫描发现子项。扫描发现路径不等于一定拿得到扩展，进入失败会显示错误。
+- 父目录扩展取决于系统版本与容器类型；失败时只能靠 inode 扫描发现子项。iOS 27 的 `/private/var/containers/Shared/SystemGroup` 父目录拿不到扩展，因此“系统组”改为扫描策略；能扫到子容器不等于父目录可列举。扫描发现路径也不等于一定拿得到扩展，进入失败会显示错误。
 - 沙盒扩展可能按路径签发。读取、预览、导出单个文件时会分别尝试目标路径与父目录；目录递归复制/导出仍依赖目录扩展覆盖子树，失败会明确报错。
 - 文本编辑上限 2 MB；超过时只读显示前 2 MB，保存禁用，避免截断。
 - 预览和分享会把目标复制到 App 临时目录，大目录/大文件会占磁盘并耗时。
-- 自动识别名称会对每个容器消费一次 sandbox extension；容器很多时会持续一段时间，可在设置里关闭或点进度条的停止。
+- 自动识别名称会对每个容器消费一次 sandbox extension；容器很多时会持续一段时间，可在设置里关闭或点进度条的停止。离开目录（推入子目录或返回主页）会暂停当前识别，回来再继续，避免多个根目录同时刷容器查询。
 - 日志文件在应用自己的 Documents（不是 App Group），会保留历史并在 1.5 MB 时轮转；诊断页可复制/导出。
 - App Group 由签名授予，应用只读取、不要求填写；没有该 entitlement 的签名无法使用容器路径。
 - 没有网络、上传、越狱、内核利用或绕过签名。

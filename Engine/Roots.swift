@@ -72,9 +72,9 @@ enum Roots {
     static let systemGroup27 = RootSpec(
         path: "/private/var/containers/Shared/SystemGroup",
         title: "系统组",
-        subtitle: "iOS 27 SystemGroup 容器",
+        subtitle: "iOS 27 SystemGroup 容器（inode 扫描）",
         symbol: "rectangle.3.group.fill",
-        access: .list,
+        access: .scan,
         requiresIOS27: true
     )
 

@@ -74,6 +74,7 @@ final class Catalog: ObservableObject {
 
     var sharedWatermark: UInt64 { disk.sharedScanWatermark ?? 0 }
     var hasSharedScan: Bool { disk.sharedScanWatermark != nil }
+    var scanVersion: Int? { disk.scanVersion }
 
     func items(for root: String) -> [FSItem] {
         let key = PathTool.canonical(root)
@@ -174,7 +175,8 @@ final class Catalog: ObservableObject {
     func mergeRootScan(results: [String: [String]],
                        roots: [String],
                        watermark: UInt64,
-                       replace: Bool) -> Int {
+                       replace: Bool,
+                       version: Int) -> Int {
         var next = disk
         var added = 0
         for root in roots {
@@ -194,6 +196,7 @@ final class Catalog: ObservableObject {
         }
         next.sharedScanWatermark = max(next.sharedScanWatermark ?? 0, watermark)
         next.sharedScanDate = Date()
+        next.scanVersion = version
         disk = next
         store.save(next)
         return added
@@ -204,6 +207,7 @@ final class Catalog: ObservableObject {
         next.scans.removeAll()
         next.sharedScanWatermark = nil
         next.sharedScanDate = nil
+        next.scanVersion = nil
         disk = next
         store.save(next)
         Log.info("cleared scan cache")

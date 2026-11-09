@@ -37,6 +37,7 @@ enum ContainerIndexError: LocalizedError {
 @MainActor
 final class ContainerIndex: ObservableObject {
     static let shared = ContainerIndex()
+    static let indexVersion = 2
 
     @Published private(set) var progress: ScanStatus?
     @Published private(set) var lastCompleted: Date?
@@ -62,6 +63,7 @@ final class ContainerIndex: ObservableObject {
         let roots = Roots.all.map { PathTool.canonical($0.path) }
         let needsFull = requestFull
             || !catalog.hasSharedScan
+            || catalog.scanVersion != Self.indexVersion
             || roots.contains(where: { catalog.scanRecord(for: $0) == nil })
 
         let task = Task { try await self.performScan(full: needsFull, roots: roots) }
@@ -126,12 +128,15 @@ final class ContainerIndex: ObservableObject {
         let added = catalog.mergeRootScan(results: found,
                                           roots: roots,
                                           watermark: end,
-                                          replace: replace)
+                                          replace: replace,
+                                          version: Self.indexVersion)
         let total = roots.reduce(0) { $0 + catalog.count(for: $1) }
         lastCompleted = Date()
         lastAdded = added
         if added > 0 || replace {
-            Log.info("index scan done: +\(added), total=\(total)")
+            let counts = roots.map { "\(PathTool.name(of: $0)):\(catalog.count(for: $0))" }
+                .joined(separator: " ")
+            Log.info("index scan done: +\(added), total=\(total) [\(counts)]")
         }
         NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
 

@@ -6,8 +6,9 @@
 //  GPL-3.0. This file is part of WorseFiles, GPL-3.0. See LICENSE.
 //
 //  The original scans one parent prefix. WorseFiles has several container
-//  parents on the same volume, so this walks the inode range once and checks
-//  each returned path against all prefixes.
+//  parents, and some live on a different filesystem (SystemGroup on iOS 27).
+//  This walks the inode range once per distinct fsid, matching every root
+//  that belongs to that fsid.
 //
 
 #import <Foundation/Foundation.h>
@@ -27,10 +28,11 @@ NSDictionary<NSString *, NSArray<NSString *> *> *pathleak_roots(NSArray<NSString
 
     char prefixes[8][PATH_MAX];
     size_t lengths[8];
+    NSUInteger groups[8];
+    fsid_t groupFsids[8];
+    NSUInteger groupCount = 0;
+
     NSMutableArray<NSString *> *keys = [NSMutableArray array];
-    struct statfs firstStat;
-    fsid_t fsid;
-    BOOL haveStat = NO;
 
     for (NSString *raw in roots) {
         if (![raw isKindOfClass:NSString.class]) continue;
@@ -42,24 +44,32 @@ NSDictionary<NSString *, NSArray<NSString *> *> *pathleak_roots(NSArray<NSString
 
         struct statfs current;
         if (statfs(dir.fileSystemRepresentation, &current) != 0) continue;
-        if (!haveStat) {
-            firstStat = current;
-            fsid = current.f_fsid;
-            haveStat = YES;
-        } else if (memcmp(&current.f_fsid, &firstStat.f_fsid, sizeof(fsid_t)) != 0) {
-            continue;
+
+        NSUInteger group = groupCount;
+        for (NSUInteger index = 0; index < groupCount; index++) {
+            if (memcmp(&current.f_fsid, &groupFsids[index], sizeof(fsid_t)) == 0) {
+                group = index;
+                break;
+            }
+        }
+        if (group == groupCount) {
+            if (groupCount >= 8) continue;
+            groupFsids[group] = current.f_fsid;
+            groupCount++;
         }
 
         NSUInteger slot = keys.count;
-        if (![dir getFileSystemRepresentation: prefixes[slot] maxLength: sizeof(prefixes[slot])]) {
+        if (![dir getFileSystemRepresentation: prefixes[slot]
+                                    maxLength: sizeof(prefixes[slot])]) {
             continue;
         }
         lengths[slot] = strlen(prefixes[slot]);
+        groups[slot] = group;
         [keys addObject: dir];
     }
 
     NSUInteger count = keys.count;
-    if (count == 0 || !haveStat) return @{};
+    if (count == 0 || groupCount == 0) return @{};
 
     NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *found =
         [NSMutableDictionary dictionaryWithCapacity: count];
@@ -68,21 +78,25 @@ NSDictionary<NSString *, NSArray<NSString *> *> *pathleak_roots(NSArray<NSString
     }
 
     char buffer[PATH_MAX];
-    for (uint64_t inode = from_inode; inode <= to_inode; inode++) {
-        ssize_t n = fsgetpath(buffer, sizeof(buffer), &fsid, inode);
-        if (n <= 0) continue;
+    for (NSUInteger group = 0; group < groupCount; group++) {
+        fsid_t fsid = groupFsids[group];
+        for (uint64_t inode = from_inode; inode <= to_inode; inode++) {
+            ssize_t n = fsgetpath(buffer, sizeof(buffer), &fsid, inode);
+            if (n <= 0) continue;
 
-        for (NSUInteger index = 0; index < count; index++) {
-            size_t prefixLength = lengths[index];
-            if (strncmp(buffer, prefixes[index], prefixLength) != 0) continue;
-            if (buffer[prefixLength] != '/') continue;
-            if (strchr(buffer + prefixLength + 1, '/')) continue;
+            for (NSUInteger index = 0; index < count; index++) {
+                if (groups[index] != group) continue;
+                size_t prefixLength = lengths[index];
+                if (strncmp(buffer, prefixes[index], prefixLength) != 0) continue;
+                if (buffer[prefixLength] != '/') continue;
+                if (strchr(buffer + prefixLength + 1, '/')) continue;
 
-            NSString *path = [[NSString alloc] initWithBytes: buffer
-                                                      length: strlen(buffer)
-                                                    encoding: NSUTF8StringEncoding];
-            if (path) [found[keys[index]] addObject: path];
-            break;
+                NSString *path = [[NSString alloc] initWithBytes: buffer
+                                                          length: strlen(buffer)
+                                                        encoding: NSUTF8StringEncoding];
+                if (path) [found[keys[index]] addObject: path];
+                break;
+            }
         }
     }
 

@@ -112,4 +112,5 @@ struct CatalogDisk: Codable {
     // still decode without a custom initializer.
     var sharedScanWatermark: UInt64?
     var sharedScanDate: Date?
+    var scanVersion: Int?
 }

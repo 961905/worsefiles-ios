@@ -170,7 +170,14 @@ struct DiagnosticsContent: View {
         let result = await Task.detached(priority: .userInitiated) {
             FileService.shared.diagnose()
         }.value
-        lines = result
+        var detail = result
+        for root in Roots.all {
+            detail.append("\(root.title)：\(Catalog.shared.count(for: root.path)) 项")
+        }
+        if let version = Catalog.shared.scanVersion {
+            detail.append("索引版本：\(version)")
+        }
+        lines = detail
         logText = Log.tail
         running = false
     }

@@ -584,6 +584,18 @@ final class BrowserModel: ObservableObject {
         startLabelResolution(app: nil, manual: false)
     }
 
+    func pauseLabelResolution() {
+        labelToken?.cancel()
+        labelToken = nil
+        labelTask?.cancel()
+        labelTask = nil
+        labelProgress = nil
+    }
+
+    func resumeAutoLabels() {
+        autoResolveLabelsIfNeeded()
+    }
+
     func stopLabelResolution() {
         autoLabelSuppressed = true
         labelToken?.cancel()
