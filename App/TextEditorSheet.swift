@@ -119,13 +119,23 @@ struct TextEditorSheet: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
                 }
-                TextEditor(text: $text)
-                    .font(.system(.body, design: .monospaced))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 10)
-                    .disabled(truncated)
+                if truncated {
+                    ScrollView {
+                        Text(text)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                } else {
+                    TextEditor(text: $text)
+                        .font(.system(.body, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 10)
+                }
                 if let saveError {
                     Text(saveError)
                         .font(.caption)
