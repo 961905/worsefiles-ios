@@ -30,6 +30,7 @@ final class ContainerScanner: @unchecked Sendable {
     static let shared = ContainerScanner()
 
     private let chunkSize: UInt64 = 40_000
+    private let targetedChunkSize: UInt64 = 200_000
 
     // A file just created in our own tmp gives the current high-water inode
     // for this volume. That is the upper bound worth walking.
@@ -92,5 +93,43 @@ final class ContainerScanner: @unchecked Sendable {
         }
 
         return results.mapValues { Array($0) }
+    }
+
+    // Scan only for one child name under one parent. The first chunk that
+    // finds a match cancels all remaining chunks. Returns [] when nothing
+    // matched in [start, end].
+    func scanFirstMatch(root: String,
+                        needle: String,
+                        start: UInt64,
+                        end: UInt64,
+                        token: CancelToken) -> [String] {
+        guard end >= 1, end >= start else { return [] }
+        let span = end - start + 1
+        let chunks = max(1, Int((span + targetedChunkSize - 1) / targetedChunkSize))
+        var hit: [String] = []
+        let lock = NSLock()
+
+        DispatchQueue.concurrentPerform(iterations: chunks) { index in
+            lock.lock()
+            let alreadyHit = !hit.isEmpty
+            lock.unlock()
+            if alreadyHit || token.isCancelled { return }
+
+            let low = start + UInt64(index) * targetedChunkSize
+            if low > end { return }
+            let high = min(end, low + targetedChunkSize - 1)
+
+            let found = pathleak_first_match(root, needle, low, high) ?? []
+            if found.isEmpty { return }
+
+            lock.lock()
+            if hit.isEmpty && !token.isCancelled {
+                hit = found
+                token.cancel()
+            }
+            lock.unlock()
+        }
+
+        return hit
     }
 }

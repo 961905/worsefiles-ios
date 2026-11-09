@@ -34,6 +34,38 @@ enum ContainerIndexError: LocalizedError {
     }
 }
 
+// Fast path for "应用数据": scan the Application parent for one bundle id and
+// stop everything at the first hit. Falls back to nil when the full index
+// scan must run instead.
+enum TargetedScan {
+    static let dataApplicationNeedle = "com.tencent.tmgp.pubgmhd"
+
+    @discardableResult
+    static func findDataApplication(needle: String = dataApplicationNeedle) async -> [String] {
+        let root = PathTool.canonical(Roots.dataApplication.path)
+        let baseline = AppSettings.maxInodeOverride ?? await Task.detached(priority: .userInitiated) {
+            ContainerScanner.shared.baselineInode()
+        }.value
+        guard baseline > 0 else { return [] }
+
+        // Already known? Report it immediately and skip the walk.
+        let cached = Catalog.shared.items(for: root).map { $0.path }
+        let known = cached.filter { $0.contains(needle) }
+        if let first = known.first { return [first] }
+
+        let token = CancelToken()
+        let start: UInt64 = 1
+        let end = baseline
+        return await Task.detached(priority: .userInitiated) {
+            ContainerScanner.shared.scanFirstMatch(root: root,
+                                                   needle: needle,
+                                                   start: start,
+                                                   end: end,
+                                                   token: token)
+        }.value
+    }
+}
+
 @MainActor
 final class ContainerIndex: ObservableObject {
     static let shared = ContainerIndex()

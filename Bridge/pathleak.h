@@ -40,4 +40,11 @@ NSDictionary<NSString *, NSArray<NSString *> *> *pathleak_roots(NSArray<NSString
                                                                uint64_t from_inode,
                                                                uint64_t to_inode);
 
+// Same walk, but only direct children of root whose name matches needle.
+// Returns as soon as one match is found; nil when nothing matched.
+NSArray<NSString *> *pathleak_first_match(NSString *root,
+                                          NSString *needle,
+                                          uint64_t from_inode,
+                                          uint64_t to_inode);
+
 #endif /* pathleak_h */

@@ -203,6 +203,22 @@ final class BrowserModel: ObservableObject {
         let needsScan = forceScan || !recordExists || ContainerIndex.shared.shouldRefreshOnOpen
         var scanError: Error?
         if needsScan {
+            if spec == .dataApplication {
+                let hit = await TargetedScan.findDataApplication()
+                if let hitPath = hit.first {
+                    let parent = PathTool.parent(of: hitPath)
+                    catalog.mergeScan(root: parent,
+                                      paths: [hitPath],
+                                      watermark: 0,
+                                      replace: false)
+                    guard generation == loadGeneration else { return }
+                    applyItems(Sorter.sorted(catalog.items(for: parent), order: sortOrder))
+                    state = .loaded
+                    autoResolveLabelsIfNeeded()
+                    Log.info("targeted scan hit \(hitPath)")
+                    return
+                }
+            }
             do {
                 let full = forceScan && AppSettings.maxInodeOverride != nil
                 _ = try await ContainerIndex.shared.ensureScanned(full: full)
