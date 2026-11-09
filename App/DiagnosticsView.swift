@@ -96,6 +96,17 @@ struct DiagnosticsContent: View {
                 .disabled(running)
 
                 Button {
+                    Task {
+                        running = true
+                        _ = await ContainerIndex.shared.reconcileIfNeeded(minInterval: 0)
+                        await run()
+                    }
+                } label: {
+                    Label("同步已安装应用", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(running)
+
+                Button {
                     UIPasteboard.general.string = lines.joined(separator: "\n")
                     copied = true
                     app.flash("已复制诊断结果")
@@ -177,6 +188,10 @@ struct DiagnosticsContent: View {
         if let version = Catalog.shared.scanVersion {
             detail.append("索引版本：\(version)")
         }
+        let index = ContainerIndex.shared
+        detail.append("已安装应用：\(index.installedAppCount)（数据容器 \(index.installedPathCount)）")
+        detail.append("应用列表：\(index.installedListAvailable ? "可用" : "不可用")")
+        detail.append("上次同步：\(Format.date(index.lastReconciled))")
         lines = detail
         logText = Log.tail
         running = false

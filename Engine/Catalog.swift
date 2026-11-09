@@ -75,6 +75,8 @@ final class Catalog: ObservableObject {
     var sharedWatermark: UInt64 { disk.sharedScanWatermark ?? 0 }
     var hasSharedScan: Bool { disk.sharedScanWatermark != nil }
     var scanVersion: Int? { disk.scanVersion }
+    var installedAppIDs: Set<String> { Set(disk.installedAppIDs ?? []) }
+    var installedAppDate: Date? { disk.installedAppDate }
 
     func items(for root: String) -> [FSItem] {
         let key = PathTool.canonical(root)
@@ -147,6 +149,89 @@ final class Catalog: ObservableObject {
         if let label = next.labels.removeValue(forKey: oldKey) {
             next.labels[newKey] = label
         }
+        disk = next
+        store.save(next)
+    }
+
+    // Batch prune used by the LaunchServices reconcile. Returns the number of
+    // indexed paths that were actually removed.
+    @discardableResult
+    func prunePaths(_ paths: Set<String>) -> Int {
+        guard !paths.isEmpty else { return 0 }
+        let keys = Set(paths.map { PathTool.canonical($0) })
+        var next = disk
+        var scans = next.scans
+        var removed = 0
+
+        for (root, record) in scans {
+            let kept = record.paths.filter { !keys.contains(PathTool.canonical($0)) }
+            let delta = record.paths.count - kept.count
+            guard delta > 0 else { continue }
+            var updated = record
+            updated.paths = kept
+            scans[root] = updated
+            removed += delta
+        }
+
+        var labelsRemoved = false
+        for key in keys {
+            if next.labels.removeValue(forKey: key) != nil {
+                labelsRemoved = true
+            }
+        }
+
+        next.scans = scans
+        guard removed > 0 || labelsRemoved else { return 0 }
+        disk = next
+        store.save(next)
+        return removed
+    }
+
+    // Insert live container paths into one root record. Used when
+    // LaunchServices knows about a container the inode watermark missed.
+    @discardableResult
+    func addPaths(_ paths: [String], to root: String, labels: [String: String] = [:]) -> Int {
+        let key = PathTool.canonical(root)
+        var next = disk
+        var record = next.scans[key] ?? ContainerScanRecord(paths: [],
+                                                            watermark: next.sharedScanWatermark ?? 0,
+                                                            updated: nil)
+        let existing = Set(record.paths.map { PathTool.canonical($0) })
+        var pending: [String] = []
+
+        for raw in paths {
+            let path = PathTool.canonical(raw)
+            guard PathTool.parent(of: path) == key else { continue }
+            guard !existing.contains(path), !pending.contains(path) else { continue }
+            pending.append(path)
+        }
+
+        var labelsChanged = false
+        for (raw, label) in labels {
+            let path = PathTool.canonical(raw)
+            guard !label.isEmpty, PathTool.parent(of: path) == key else { continue }
+            if next.labels[path] != label {
+                next.labels[path] = label
+                labelsChanged = true
+            }
+        }
+
+        guard !pending.isEmpty || labelsChanged else { return 0 }
+        if !pending.isEmpty {
+            record.paths = (record.paths + pending).sorted()
+            record.updated = Date()
+            next.scans[key] = record
+        }
+        disk = next
+        store.save(next)
+        return pending.count
+    }
+
+    func setInstalledAppIDs(_ identifiers: [String]) {
+        let sorted = Array(Set(identifiers)).sorted()
+        var next = disk
+        next.installedAppIDs = sorted
+        next.installedAppDate = Date()
         disk = next
         store.save(next)
     }
