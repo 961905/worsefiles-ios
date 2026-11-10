@@ -334,6 +334,16 @@ final class ContainerIndex: ObservableObject {
                 lastCompleted = Date()
                 lastAdded = hit.count
                 Log.info("targeted scan hit \(hit.first ?? "")")
+                // Resolve the container identifier right away so the home
+                // screen row shows the mapped name on first scan, not UUID.
+                if let path = hit.first {
+                    let identifier = await Task.detached(priority: .userInitiated) {
+                        FileService.shared.identifier(for: path)
+                    }.value
+                    if let identifier, !identifier.isEmpty {
+                        catalog.setLabel(identifier, for: path)
+                    }
+                }
                 NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
                 return ContainerScanSummary(added: hit.count,
                                             total: catalog.count(for: dataAppRoot),
