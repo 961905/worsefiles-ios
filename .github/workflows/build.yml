@@ -2,6 +2,7 @@ name: build
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -43,12 +44,12 @@ jobs:
         run: |
           if [[ "${GITHUB_REF_NAME}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF_NAME#refs/tags/}"
-          elif [[ "${{ inputs.release }}" == "true" ]]; then
+          elif [[ "${GITHUB_REF_NAME}" == "main" || "${{ inputs.release }}" == "true" ]]; then
             TAG="latest"
           else
             echo "no release requested"; exit 0
           fi
           gh release create "${TAG}" WorseFiles-unsigned.ipa \
             --title "worsefiles ${TAG}" \
-            --notes "unsigned ipa, sign before install" \
+            --notes "unsigned ipa from ${GITHUB_SHA::7}, sign before install" \
             --clobber || gh release upload "${TAG}" WorseFiles-unsigned.ipa --clobber
