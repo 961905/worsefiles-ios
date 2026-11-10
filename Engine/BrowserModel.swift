@@ -211,6 +211,9 @@ final class BrowserModel: ObservableObject {
             do {
                 let full = forceScan && AppSettings.maxInodeOverride != nil
                 _ = try await ContainerIndex.shared.ensureScanned(full: full)
+                if forceScan && !full {
+                    ContainerIndex.shared.rewindWatermarkForRefresh()
+                }
             } catch let error as ContainerIndexError {
                 if case .cancelled = error {
                     Log.info("index scan cancelled")

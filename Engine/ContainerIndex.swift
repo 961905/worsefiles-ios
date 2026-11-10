@@ -75,6 +75,19 @@ final class ContainerIndex: ObservableObject {
         return Date().timeIntervalSince(lastCompleted) > 30
     }
 
+    // Pull the shared watermark back by one window so the next scan (pull to
+    // refresh) walks recently freed and reallocated inodes. This is how an
+    // app update gets its new container UUID on a secondary incremental scan.
+    static let refreshRewind: UInt64 = 300_000
+
+    func rewindWatermarkForRefresh() {
+        let catalog = Catalog.shared
+        let current = catalog.sharedWatermark
+        guard current > Self.refreshRewind else { return }
+        catalog.setSharedWatermark(current - Self.refreshRewind)
+        Log.info("watermark rewound to \(current - Self.refreshRewind) for refresh rescan")
+    }
+
     // Reconcile the index against the live app list. The inode watermark
     // cannot see an install that reused a freed inode, and it never forgets an
     // uninstall. LaunchServices fixes both directions; lstat then catches

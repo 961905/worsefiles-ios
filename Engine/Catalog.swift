@@ -75,6 +75,13 @@ final class Catalog: ObservableObject {
     var sharedWatermark: UInt64 { disk.sharedScanWatermark ?? 0 }
     var hasSharedScan: Bool { disk.sharedScanWatermark != nil }
     var scanVersion: Int? { disk.scanVersion }
+
+    func setSharedWatermark(_ value: UInt64) {
+        var next = disk
+        next.sharedScanWatermark = value
+        disk = next
+        store.save(next)
+    }
     var installedAppIDs: Set<String> { Set(disk.installedAppIDs ?? []) }
     var installedAppDate: Date? { disk.installedAppDate }
 
