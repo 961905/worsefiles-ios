@@ -101,12 +101,7 @@ enum Roots {
     }
 
     static var all: [RootSpec] {
-        var specs = [dataApplication, pluginKit, internalDaemon, appGroup]
-        if isIOS27OrLater {
-            specs.append(systemData27)
-            specs.append(systemGroup27)
-        }
-        return specs
+        [dataApplication]
     }
 
     static var containerParents: [String] {
