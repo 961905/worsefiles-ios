@@ -7,7 +7,7 @@ import SwiftUI
 import UIKit
 
 struct DiagnosticsView: View {
-    @Environment(\(.dismiss)) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var app: AppModel
     @State private var lines: [String] = []
     @State private var running = false
@@ -15,7 +15,7 @@ struct DiagnosticsView: View {
     var body: some View {
         List {
             Section {
-                ForEach(Array(lines.enumerated()), id: \\.offset) { pair in
+                ForEach(Array(lines.enumerated()), id: \.offset) { pair in
                     Text(pair.element)
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
