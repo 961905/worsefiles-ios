@@ -13,7 +13,6 @@ struct RootView: View {
 
     private enum RootSheet: String, Identifiable {
         case settings
-        case diagnostics
         var id: String { rawValue }
     }
 
@@ -48,8 +47,6 @@ struct RootView: View {
                     switch sheet {
                     case .settings:
                         SettingsView()
-                    case .diagnostics:
-                        DiagnosticsView()
                     }
                 }
                 .environmentObject(app)
@@ -69,36 +66,19 @@ struct RootView: View {
 
     private var environmentSection: some View {
         Section {
-            Button {
-                activeSheet = .diagnostics
-            } label: {
-                if !Roots.escapeSupported {
-                    RootRow(symbol: "exclamationmark.shield.fill",
-                            tint: .orange,
-                            title: "系统不受支持",
-                            subtitle: "worse_query 面向 iOS 26 与 27。当前 iOS \(Roots.majorVersion)，本应用沙盒与 App Group 仍可浏览。",
-                            detail: nil)
-                } else if groupAvailable && Roots.testedWindow {
-                    RootRow(symbol: "checkmark.shield.fill",
-                            tint: .green,
-                            title: "环境就绪",
-                            subtitle: "App Group 可用，容器路径按 worse_query 的范围访问。",
-                            detail: nil)
-                } else if groupAvailable {
-                    RootRow(symbol: "exclamationmark.triangle.fill",
-                            tint: .orange,
-                            title: "系统版本未测试",
-                            subtitle: "当前 iOS \(Roots.majorVersion)。worse_query 文档区间是 26.0–26.7.2 / 27.2，仍可尝试。",
-                            detail: "诊断")
-                } else {
-                    RootRow(symbol: "exclamationmark.triangle.fill",
-                            tint: .orange,
-                            title: "App Group 不可用",
-                            subtitle: "当前签名没有可用的 App Group。用包含 App Groups 的配置重新签名；应用会自动读取，不需要手填。",
-                            detail: "设置")
-                }
+            if groupAvailable && Roots.testedWindow {
+                RootRow(symbol: "checkmark.shield.fill",
+                        tint: .green,
+                        title: "环境就绪",
+                        subtitle: "App Group 可用。",
+                        detail: nil)
+            } else {
+                RootRow(symbol: "exclamationmark.triangle.fill",
+                        tint: .orange,
+                        title: "App Group 不可用",
+                        subtitle: "当前签名没有可用的 App Group。用包含 App Groups 的配置重新签名。",
+                        detail: "设置")
             }
-            .buttonStyle(.plain)
         } header: {
             Text("环境")
         } footer: {
