@@ -35,6 +35,7 @@ struct TextPrompt: Identifiable {
 
 enum BrowserSheet {
     case info(FSItem)
+    case permissions(FSItem)
     case preview(URL)
     case text(FSItem)
     case share([URL])
@@ -495,6 +496,34 @@ final class BrowserModel: ObservableObject {
 
     func showInfo(_ item: FSItem) {
         sheet = SheetPayload(content: .info(item))
+    }
+
+    func permissionsPrompt(_ item: FSItem) {
+        sheet = SheetPayload(content: .permissions(item))
+    }
+
+    func applyPermissions(_ item: FSItem, octal: String, app: AppModel) {
+        let trimmed = octal.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count == 3, trimmed.allSatisfy({ $0.isNumber }),
+              let value = UInt16(trimmed, radix: 8), value <= 0o777 else {
+            errorMessage = "权限格式应为三位八进制数字，例如 755"
+            return
+        }
+        busy = "修改权限中…"
+        sheet = nil
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try FileService.shared.setPermissions(path: item.path, octal: value)
+                }.value
+                busy = nil
+                app.flash("权限已改为 \(trimmed)")
+                await load(forceScan: false)
+            } catch {
+                busy = nil
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func share(_ chosen: [FSItem]) {

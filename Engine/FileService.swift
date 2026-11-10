@@ -447,6 +447,32 @@ final class FileService: @unchecked Sendable {
         return textExtensions.contains(ext)
     }
 
+    // MARK: - Permissions
+
+    func permissions(path: String) -> String? {
+        queue.sync {
+            let key = PathTool.canonical(path)
+            if !nativelyAccessible(key) {
+                _ = try? broker.access(key)
+            }
+            var status = stat()
+            guard lstat(key, &status) == 0 else { return nil }
+            let mode = status.st_mode & 0o777
+            return String(mode, radix: 8)
+        }
+    }
+
+    func setPermissions(path: String, octal: UInt16) throws {
+        try queue.sync {
+            let key = PathTool.canonical(path)
+            try grantAllLocked([key, PathTool.parent(of: key)])
+            guard chmod(key, mode_t(octal)) == 0 else {
+                throw NSError(domain: "WorseFiles", code: 20,
+                              userInfo: [NSLocalizedDescriptionKey: "chmod 失败：\(String(cString: strerror(errno)))"])
+            }
+        }
+    }
+
     // MARK: - Diagnostics
 
     func diagnose() -> [String] {

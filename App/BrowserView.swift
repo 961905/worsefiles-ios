@@ -267,6 +267,11 @@ struct BrowserView: View {
             Label("信息", systemImage: "info.circle")
         }
         Button {
+            model.permissionsPrompt(item)
+        } label: {
+            Label("权限", systemImage: "lock.rotation")
+        }
+        Button {
             model.renamePrompt(item)
         } label: {
             Label("重命名", systemImage: "character.cursor.ibeam")
@@ -497,6 +502,10 @@ struct BrowserView: View {
         switch content {
         case .info(let item):
             InfoView(item: item)
+        case .permissions(let item):
+            PermissionsSheet(item: item) { octal in
+                model.applyPermissions(item, octal: octal, app: app)
+            }
         case .preview(let url):
             PreviewSheet(url: url)
         case .text(let item):
