@@ -303,7 +303,7 @@ final class ContainerIndex: ObservableObject {
                     Task { @MainActor [weak self] in
                         guard let self, self.token === scanToken, var status = self.progress else { return }
                         let fraction = Double(doneChunks) / Double(max(1, totalChunks))
-                        status.done = min(status.total, Int(fraction * Double(status.total)))
+                        status.done = min(status.total, UInt64(fraction * Double(status.total)))
                         self.progress = status
                     }
                 }
