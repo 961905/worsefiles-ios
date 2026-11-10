@@ -286,20 +286,20 @@ final class ContainerIndex: ObservableObject {
         progress = ScanStatus(done: 0, total: end - start + 1, started: Date())
         Log.info("index scan \(start)…\(end) full=\(replace)")
 
-        // 应用数据 fast path: same progress UI, single root, chunk-based
-        // progress, and the walk stops at the first pubgmhd container and
-        // returns only that one. Other roots keep the untouched multi-root
-        // scan path.
-        let targeted = roots.count == 1 && roots[0] == PathTool.canonical(Roots.dataApplication.path)
+        // 应用数据 fast path: whenever this scan covers the Application
+        // parent, run the targeted walk first. It stops at the first pubgmhd
+        // container and returns only that one, so remaining chunks never
+        // run. Without a hit we fall through to the full multi-root scan.
+        let dataAppRoot = PathTool.canonical(Roots.dataApplication.path)
+        let targeted = roots.contains(dataAppRoot)
         let found: [String: [String]]
         if targeted {
             let root = roots[0]
-            found = await Task.detached(priority: .userInitiated) {
-                let hit = ContainerScanner.shared.scanFirstMatch(root: root,
-                                                                 needle: TargetedScan.dataApplicationNeedle,
-                                                                 start: start,
-                                                                 end: end,
-                                                                 token: scanToken) { doneChunks, totalChunks in
+            let hit = ContainerScanner.shared.scanFirstMatch(root: root,
+                                                             needle: TargetedScan.dataApplicationNeedle,
+                                                             start: start,
+                                                             end: end,
+                                                             token: scanToken) { doneChunks, totalChunks in
                     Task { @MainActor [weak self] in
                         guard let self, self.token === scanToken, var status = self.progress else { return }
                         let fraction = Double(doneChunks) / Double(max(1, totalChunks))
@@ -307,8 +307,24 @@ final class ContainerIndex: ObservableObject {
                         self.progress = status
                     }
                 }
-                return hit.isEmpty ? [String: [String]]() : [root: hit]
-            }.value
+            if !hit.isEmpty {
+                token = nil
+                progress = nil
+                let results = [root: hit]
+                _ = catalog.mergeRootScan(results: results,
+                                          roots: [root],
+                                          watermark: end,
+                                          replace: replace,
+                                          version: Self.indexVersion)
+                lastCompleted = Date()
+                lastAdded = hit.count
+                Log.info("targeted scan hit \(hit.first ?? "")")
+                NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
+                return ContainerScanSummary(added: hit.count,
+                                            total: catalog.count(for: root),
+                                            full: replace)
+            }
+            found = [:]
         } else {
             found = await Task.detached(priority: .userInitiated) {
                 ContainerScanner.shared.scan(roots: roots,
