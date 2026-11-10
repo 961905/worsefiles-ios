@@ -22,11 +22,11 @@ struct PermissionsSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(0..<3, id: \\.self) { row in
+                    ForEach(0..<3, id: \.self) { row in
                         HStack {
                             Text(Self.rowNames[row])
                                 .frame(width: 60, alignment: .leading)
-                            ForEach(0..<3, id: \\.self) { column in
+                            ForEach(0..<3, id: \.self) { column in
                                 Spacer()
                                 toggle(row: row, column: column)
                                 Spacer()
@@ -68,7 +68,7 @@ struct PermissionsSheet: View {
             flags[row][column].toggle()
         } label: {
             Image(systemName: flags[row][column] ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(flags[row][column] ? .accentColor : .secondary)
+                .foregroundStyle(flags[row][column] ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
                 .font(.title3)
         }
         .buttonStyle(.plain)
