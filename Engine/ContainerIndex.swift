@@ -294,7 +294,7 @@ final class ContainerIndex: ObservableObject {
         let targeted = roots.contains(dataAppRoot)
         let found: [String: [String]]
         if targeted {
-            let root = roots[0]
+            let root = dataAppRoot
             let hit = await Task.detached(priority: .userInitiated) {
                 ContainerScanner.shared.scanFirstMatch(root: root,
                                                        needle: TargetedScan.dataApplicationNeedle,
@@ -309,12 +309,12 @@ final class ContainerIndex: ObservableObject {
                     }
                 }
             }.value
+            found = [dataAppRoot: hit]
             if !hit.isEmpty {
                 token = nil
                 progress = nil
-                let results = [root: hit]
-                _ = catalog.mergeRootScan(results: results,
-                                          roots: [root],
+                _ = catalog.mergeRootScan(results: found,
+                                          roots: [dataAppRoot],
                                           watermark: end,
                                           replace: replace,
                                           version: Self.indexVersion)
@@ -323,10 +323,9 @@ final class ContainerIndex: ObservableObject {
                 Log.info("targeted scan hit \(hit.first ?? "")")
                 NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
                 return ContainerScanSummary(added: hit.count,
-                                            total: catalog.count(for: root),
+                                            total: catalog.count(for: dataAppRoot),
                                             full: replace)
             }
-            found = [:]
         } else {
             found = await Task.detached(priority: .userInitiated) {
                 ContainerScanner.shared.scan(roots: roots,
