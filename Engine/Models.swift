@@ -19,7 +19,16 @@ struct FSItem: Identifiable, Hashable {
 
     var url: URL { URL(fileURLWithPath: path) }
 
-    var displayName: String { identifier?.isEmpty == false ? identifier! : name }
+    var displayName: String {
+        guard let identifier, !identifier.isEmpty else { return name }
+        return Self.displayMapping[identifier] ?? identifier
+    }
+
+    // Show friendly names for known bundles; keep identifiers unchanged for
+    // matching and storage.
+    static let displayMapping: [String: String] = [
+        "com.tencent.tmgp.pubgmhd": "和平精英"
+    ]
 }
 
 enum SortKey: String, CaseIterable, Identifiable {

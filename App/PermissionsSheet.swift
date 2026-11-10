@@ -22,6 +22,17 @@ struct PermissionsSheet: View {
         NavigationStack {
             List {
                 Section {
+                    HStack {
+                        Text("")
+                            .frame(width: 60, alignment: .leading)
+                        ForEach(0..<3, id: \.self) { column in
+                            Spacer()
+                            Text(Self.columnNames[column])
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
                     ForEach(0..<3, id: \.self) { row in
                         HStack {
                             Text(Self.rowNames[row])
