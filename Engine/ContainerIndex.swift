@@ -295,11 +295,12 @@ final class ContainerIndex: ObservableObject {
         let found: [String: [String]]
         if targeted {
             let root = roots[0]
-            let hit = ContainerScanner.shared.scanFirstMatch(root: root,
-                                                             needle: TargetedScan.dataApplicationNeedle,
-                                                             start: start,
-                                                             end: end,
-                                                             token: scanToken) { doneChunks, totalChunks in
+            let hit = await Task.detached(priority: .userInitiated) {
+                ContainerScanner.shared.scanFirstMatch(root: root,
+                                                       needle: TargetedScan.dataApplicationNeedle,
+                                                       start: start,
+                                                       end: end,
+                                                       token: scanToken) { doneChunks, totalChunks in
                     Task { @MainActor [weak self] in
                         guard let self, self.token === scanToken, var status = self.progress else { return }
                         let fraction = Double(doneChunks) / Double(max(1, totalChunks))
@@ -307,6 +308,7 @@ final class ContainerIndex: ObservableObject {
                         self.progress = status
                     }
                 }
+            }.value
             if !hit.isEmpty {
                 token = nil
                 progress = nil
