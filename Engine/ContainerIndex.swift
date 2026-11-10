@@ -52,9 +52,14 @@ enum TargetedScan {
     static func findDataApplication(needle: String = dataApplicationNeedle) async -> [String] {
         let root = PathTool.canonical(Roots.dataApplication.path)
         let override = AppSettings.maxInodeOverride
-        let baseline = override ?? await Task.detached(priority: .userInitiated) {
-            ContainerScanner.shared.baselineInode()
-        }.value
+        let baseline: UInt64
+        if let override {
+            baseline = override
+        } else {
+            baseline = await Task.detached(priority: .userInitiated) {
+                ContainerScanner.shared.baselineInode()
+            }.value
+        }
         guard baseline > 0 else { return [] }
 
         // Already known? Report it immediately and skip the walk.
