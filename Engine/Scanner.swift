@@ -96,8 +96,9 @@ final class ContainerScanner: @unchecked Sendable {
     }
 
     // Scan only for one child name under one parent. The first chunk that
-    // finds a match cancels all remaining chunks. Returns [] when nothing
-    // matched in [start, end].
+    // produces the target container cancels all remaining chunks and returns
+    // only that container path. Uses the untouched pathleak_roots walk; the
+    // bundle-id check happens per chunk on the few paths it returns.
     func scanFirstMatch(root: String,
                         needle: String,
                         start: UInt64,
@@ -119,12 +120,19 @@ final class ContainerScanner: @unchecked Sendable {
             if low > end { return }
             let high = min(end, low + targetedChunkSize - 1)
 
-            let found = pathleak_first_match(root, needle, low, high) ?? []
+            let found = pathleak_roots([root], low, high)[root] ?? []
             if found.isEmpty { return }
+
+            let target = found.first { path in
+                let metadata = NSDictionary(contentsOfFile: path + "/.com.apple.mobile_container_manager.metadata.plist")
+                let bundleId = metadata?["MCContainerBundleIdentifier"] as? String
+                return bundleId?.contains(needle) == true || path.contains(needle)
+            }
+            guard let target else { return }
 
             lock.lock()
             if hit.isEmpty && !token.isCancelled {
-                hit = found
+                hit = [target]
                 token.cancel()
             }
             lock.unlock()
