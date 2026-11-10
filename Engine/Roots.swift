@@ -33,56 +33,9 @@ enum Roots {
         requiresIOS27: false
     )
 
-    static let pluginKit = RootSpec(
-        path: "/private/var/mobile/Containers/Data/PluginKitPlugin",
-        title: "应用扩展",
-        subtitle: "PluginKit 扩展容器",
-        symbol: "puzzlepiece.extension.fill",
-        access: .scan,
-        requiresIOS27: false
-    )
-
-    static let internalDaemon = RootSpec(
-        path: "/private/var/mobile/Containers/Data/InternalDaemon",
-        title: "系统守护进程",
-        subtitle: "InternalDaemon 容器",
-        symbol: "gearshape.2.fill",
-        access: .scan,
-        requiresIOS27: false
-    )
-
-    static let appGroup = RootSpec(
-        path: "/private/var/mobile/Containers/Shared/AppGroup",
-        title: "App 组",
-        subtitle: "多个 App 共享的 App Group 容器",
-        symbol: "person.2.fill",
-        access: .list,
-        requiresIOS27: false
-    )
-
-    static let systemData27 = RootSpec(
-        path: "/private/var/containers/Data/System",
-        title: "系统数据",
-        subtitle: "iOS 27 系统容器",
-        symbol: "externaldrive.fill",
-        access: .list,
-        requiresIOS27: true
-    )
-
-    static let systemGroup27 = RootSpec(
-        path: "/private/var/containers/Shared/SystemGroup",
-        title: "系统组",
-        subtitle: "iOS 27 SystemGroup 容器（inode 扫描）",
-        symbol: "rectangle.3.group.fill",
-        access: .scan,
-        requiresIOS27: true
-    )
-
     static var majorVersion: Int {
         ProcessInfo.processInfo.operatingSystemVersion.majorVersion
     }
-
-    static var isIOS27OrLater: Bool { majorVersion >= 27 }
 
     static var escapeSupported: Bool { majorVersion >= 26 }
 
