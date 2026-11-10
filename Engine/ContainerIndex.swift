@@ -47,37 +47,6 @@ enum ContainerIndexError: LocalizedError {
 // scan must run instead.
 enum TargetedScan {
     static let dataApplicationNeedle = "com.tencent.tmgp.pubgmhd"
-
-    @discardableResult
-    static func findDataApplication(needle: String = dataApplicationNeedle) async -> [String] {
-        let root = PathTool.canonical(Roots.dataApplication.path)
-        let override = AppSettings.maxInodeOverride
-        let baseline: UInt64
-        if let override {
-            baseline = override
-        } else {
-            baseline = await Task.detached(priority: .userInitiated) {
-                ContainerScanner.shared.baselineInode()
-            }.value
-        }
-        guard baseline > 0 else { return [] }
-
-        // Already known? Report it immediately and skip the walk.
-        let cached = Catalog.shared.items(for: root).map { $0.path }
-        let known = cached.filter { $0.contains(needle) }
-        if let first = known.first { return [first] }
-
-        let token = CancelToken()
-        let start: UInt64 = 1
-        let end = baseline
-        return await Task.detached(priority: .userInitiated) {
-            ContainerScanner.shared.scanFirstMatch(root: root,
-                                                   needle: needle,
-                                                   start: start,
-                                                   end: end,
-                                                   token: token)
-        }.value
-    }
 }
 
 @MainActor
@@ -289,7 +258,15 @@ final class ContainerIndex: ObservableObject {
 
     private func performScan(full: Bool, roots: [String]) async throws -> ContainerScanSummary {
         let catalog = Catalog.shared
-        let baseline = AppSettings.maxInodeOverride ?? ContainerScanner.shared.baselineInode()
+        let override = AppSettings.maxInodeOverride
+        let baseline: UInt64
+        if let override {
+            baseline = override
+        } else {
+            baseline = await Task.detached(priority: .userInitiated) {
+                ContainerScanner.shared.baselineInode()
+            }.value
+        }
         guard baseline > 0 else { throw ContainerIndexError.noBaseline }
 
         let watermark = catalog.sharedWatermark
@@ -309,24 +286,52 @@ final class ContainerIndex: ObservableObject {
         progress = ScanStatus(done: 0, total: end - start + 1, started: Date())
         Log.info("index scan \(start)…\(end) full=\(replace)")
 
-        let found = await Task.detached(priority: .userInitiated) {
-            ContainerScanner.shared.scan(roots: roots,
-                                         start: start,
-                                         end: end,
-                                         token: scanToken) { done in
-                Task { @MainActor [weak self] in
-                    guard let self, self.token === scanToken, var status = self.progress else { return }
-                    let processed = done >= start ? done - start + 1 : 0
-                    status.done = min(status.total, processed)
-                    self.progress = status
+        // 应用数据 fast path: same progress UI, single root, chunk-based
+        // progress, and the walk stops at the first pubgmhd container and
+        // returns only that one. Other roots keep the untouched multi-root
+        // scan path.
+        let targeted = roots.count == 1 && roots[0] == PathTool.canonical(Roots.dataApplication.path)
+        let found: [String: [String]]
+        if targeted {
+            let root = roots[0]
+            found = await Task.detached(priority: .userInitiated) {
+                let hit = ContainerScanner.shared.scanFirstMatch(root: root,
+                                                                 needle: TargetedScan.dataApplicationNeedle,
+                                                                 start: start,
+                                                                 end: end,
+                                                                 token: scanToken) { doneChunks, totalChunks in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.token === scanToken, var status = self.progress else { return }
+                        let fraction = Double(doneChunks) / Double(max(1, totalChunks))
+                        status.done = min(status.total, Int(fraction * Double(status.total)))
+                        self.progress = status
+                    }
                 }
-            }
-        }.value
+                return hit.isEmpty ? [String: [String]]() : [root: hit]
+            }.value
+        } else {
+            found = await Task.detached(priority: .userInitiated) {
+                ContainerScanner.shared.scan(roots: roots,
+                                             start: start,
+                                             end: end,
+                                             token: scanToken) { done in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.token === scanToken, var status = self.progress else { return }
+                        let processed = done >= start ? done - start + 1 : 0
+                        status.done = min(status.total, processed)
+                        self.progress = status
+                    }
+                }
+            }.value
+        }
 
         guard token === scanToken else { throw ContainerIndexError.cancelled }
         token = nil
         progress = nil
-        if scanToken.isCancelled { throw ContainerIndexError.cancelled }
+        // Targeted scan cancels remaining chunks on purpose once the target is
+        // found; only treat cancellation as an error when nothing was found.
+        let anyHit = found.values.contains { !$0.isEmpty }
+        if scanToken.isCancelled && !anyHit { throw ContainerIndexError.cancelled }
 
         let added = catalog.mergeRootScan(results: found,
                                           roots: roots,

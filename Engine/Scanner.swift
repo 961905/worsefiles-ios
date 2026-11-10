@@ -103,12 +103,14 @@ final class ContainerScanner: @unchecked Sendable {
                         needle: String,
                         start: UInt64,
                         end: UInt64,
-                        token: CancelToken) -> [String] {
+                        token: CancelToken,
+                        progress: @escaping (Int, Int) -> Void) -> [String] {
         guard end >= 1, end >= start else { return [] }
         let span = end - start + 1
         let chunks = max(1, Int((span + targetedChunkSize - 1) / targetedChunkSize))
         var hit: [String] = []
         let lock = NSLock()
+        var doneChunks = 0
 
         DispatchQueue.concurrentPerform(iterations: chunks) { index in
             lock.lock()
@@ -121,21 +123,27 @@ final class ContainerScanner: @unchecked Sendable {
             let high = min(end, low + targetedChunkSize - 1)
 
             let found = pathleak_roots([root], low, high)[root] ?? []
-            if found.isEmpty { return }
 
-            let target = found.first { path in
+            var target: String?
+            for path in found {
                 let metadata = NSDictionary(contentsOfFile: path + "/.com.apple.mobile_container_manager.metadata.plist")
                 let bundleId = metadata?["MCContainerBundleIdentifier"] as? String
-                return bundleId?.contains(needle) == true || path.contains(needle)
+                if bundleId?.contains(needle) == true || path.contains(needle) {
+                    target = path
+                    break
+                }
             }
-            guard let target else { return }
 
             lock.lock()
-            if hit.isEmpty && !token.isCancelled {
+            doneChunks += 1
+            let done = doneChunks
+            if let target, hit.isEmpty && !token.isCancelled {
                 hit = [target]
                 token.cancel()
             }
             lock.unlock()
+            progress(done, chunks)
+            guard target != nil else { return }
         }
 
         return hit
