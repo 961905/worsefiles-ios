@@ -79,7 +79,7 @@ struct RootView: View {
                 RootRow(symbol: "checkmark.shield.fill",
                         tint: .green,
                         title: "环境就绪",
-                        subtitle: "App Group 可用。系统版本只支持 iOS 26.0–26.7.2 / 27.2。",
+                        subtitle: "App Group 可用",
                         detail: nil)
             } else {
                 RootRow(symbol: "exclamationmark.triangle.fill",
@@ -91,7 +91,7 @@ struct RootView: View {
         } header: {
             Text("环境")
         } footer: {
-            Text("仅用于自己的设备与容器调试。系统版本需在 iOS 26.0–26.7.2 或 27.2；App Group 由签名提供并自动读取。")
+            Text("支持和平精英手动修改画质、分辨率、广角等")
         }
     }
 
@@ -172,7 +172,7 @@ struct RootView: View {
             HStack {
                 Text("支持版本")
                 Spacer()
-                Text("iOS 26.0–26.7.2 / 27.2")
+                Text("iOS 26.0–27.2")
                     .foregroundStyle(.secondary)
             }
             HStack {
