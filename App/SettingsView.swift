@@ -127,6 +127,11 @@ struct SettingsView: View {
             } label: {
                 Label("释放所有沙盒句柄", systemImage: "lock.open")
             }
+            NavigationLink {
+                DiagnosticsView()
+            } label: {
+                Label("运行诊断", systemImage: "stethoscope")
+            }
         } header: {
             Text("App Group")
         } footer: {
@@ -197,16 +202,8 @@ struct SettingsView: View {
     private var aboutSection: some View {
         Section {
             LabeledContent("版本", value: versionText)
-            Link(destination: URL(string: "https://github.com/forcequitOS/worse_query")!) {
-                Label("worse_query 项目", systemImage: "arrow.up.right.square")
-            }
-            Link(destination: URL(string: "https://github.com/forcequitOS/bad_query")!) {
-                Label("bad_query 项目", systemImage: "arrow.up.right.square")
-            }
         } header: {
             Text("关于")
-        } footer: {
-            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。WorseFiles 是派生作品，同样以 GPL-3.0 发布。")
         }
     }
 
