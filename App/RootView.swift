@@ -22,9 +22,7 @@ struct RootView: View {
             List {
                 environmentSection
                 containersSection
-                ownSection
                 if !app.favorites.isEmpty { favoritesSection }
-                if !app.recents.isEmpty { recentsSection }
                 aboutSection
             }
             .listStyle(.insetGrouped)
@@ -126,36 +124,6 @@ struct RootView: View {
         }
     }
 
-    private var ownSection: some View {
-        Section {
-            NavigationLink(value: BrowseTarget(path: Roots.ownSandbox, title: "本应用沙盒")) {
-                RootRow(symbol: "iphone",
-                        tint: .blue,
-                        title: "本应用沙盒",
-                        subtitle: PathTool.short(Roots.ownSandbox, keep: 2),
-                        detail: nil)
-            }
-            NavigationLink(value: BrowseTarget(path: Roots.ownSandbox + "/Documents", title: "Documents")) {
-                RootRow(symbol: "doc.fill",
-                        tint: .gray,
-                        title: "Documents",
-                        subtitle: "可直接在文件 App 中查看",
-                        detail: nil)
-            }
-            if let groupURL = groupContainerURL {
-                NavigationLink(value: BrowseTarget(path: groupURL.path, title: "App Group")) {
-                    RootRow(symbol: "person.2.fill",
-                            tint: .indigo,
-                            title: "App Group 根目录",
-                            subtitle: PathTool.short(groupURL.path, keep: 2),
-                            detail: nil)
-                }
-            }
-        } header: {
-            Text("本应用")
-        }
-    }
-
     private var favoritesSection: some View {
         Section {
             ForEach(app.favorites) { favorite in
@@ -187,41 +155,6 @@ struct RootView: View {
         }
     }
 
-    private var recentsSection: some View {
-        Section {
-            ForEach(app.recents.prefix(6)) { recent in
-                NavigationLink(value: BrowseTarget(path: recent.path, title: recent.title)) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(recent.title)
-                                .lineLimit(1)
-                            Text(PathTool.short(recent.path))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 6)
-                        Text(Format.relativeDate(recent.date))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        app.removeRecent(recent)
-                    } label: {
-                        Label("移除", systemImage: "xmark")
-                    }
-                }
-            }
-        } header: {
-            Text("最近")
-        }
-    }
-
     private var aboutSection: some View {
         Section {
             Button {
@@ -248,12 +181,8 @@ struct RootView: View {
 
     // MARK: - Helpers
 
-    private var groupContainerURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppSettings.appGroupID)
-    }
-
     private var groupAvailable: Bool {
-        groupContainerURL != nil
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppSettings.appGroupID) != nil
     }
 
     private var appVersion: String {
