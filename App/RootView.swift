@@ -33,7 +33,7 @@ struct RootView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("容器文件")
             .onReceive(NotificationCenter.default.publisher(for: .worseFilesIndexUpdated)) { _ in
-                objectWillChange.send()
+                catalog.objectWillChange.send()
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
