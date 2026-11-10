@@ -9,6 +9,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject private var catalog = Catalog.shared
+    @ObservedObject private var index = ContainerIndex.shared
     @State private var activeSheet: RootSheet?
 
     private enum RootSheet: String, Identifiable {
@@ -21,6 +22,9 @@ struct RootView: View {
             List {
                 environmentSection
                 containersSection
+                if index.progress != nil {
+                    scanProgressSection
+                }
                 if !app.favorites.isEmpty { favoritesSection }
                 aboutSection
             }
@@ -40,7 +44,7 @@ struct RootView: View {
                 BrowserView(target: target)
             }
             .task {
-                await app.refreshIndexOnLaunch()
+                await scanIfNeeded()
             }
             .sheet(item: $activeSheet) { sheet in
                 Group {
@@ -88,15 +92,6 @@ struct RootView: View {
 
     private var containersSection: some View {
         Section {
-            ForEach(Roots.all) { root in
-                NavigationLink(value: BrowseTarget(path: root.path, title: root.title)) {
-                    RootRow(symbol: root.symbol,
-                            tint: tint(for: root),
-                            title: root.title,
-                            subtitle: root.subtitle,
-                            detail: countDetail(for: root))
-                }
-            }
             // Direct links to the tracked app's container: the UUID row is
             // what the user actually wants on the home screen.
             ForEach(catalog.items(for: Roots.dataApplication.path)) { item in
@@ -110,9 +105,30 @@ struct RootView: View {
             }
         } header: {
             Text("容器")
-        } footer: {
-            Text("应用数据、扩展和守护进程需要首次 inode 扫描，结果会缓存。App 组与 iOS 27 的系统路径优先直接列举。")
         }
+    }
+
+    private var scanProgressSection: some View {
+        Section {
+            if let status = index.progress {
+                ScanProgressView(status: status) {
+                    index.cancel()
+                }
+            }
+        } header: {
+            Text("扫描")
+        } footer: {
+            Text("首次启动或目标容器不存在时自动扫描 inode。")
+        }
+    }
+
+    private func scanIfNeeded() async {
+        await app.refreshIndexOnLaunch()
+        let containers = catalog.items(for: Roots.dataApplication.path)
+        guard containers.isEmpty else { return }
+        // No known container yet: run the scan here so the home screen fills
+        // in the UUID row as soon as it is found.
+        _ = try? await ContainerIndex.shared.ensureScanned(full: false)
     }
 
     private var favoritesSection: some View {
@@ -185,8 +201,4 @@ struct RootView: View {
         }
     }
 
-    private func countDetail(for root: RootSpec) -> String? {
-        let count = catalog.count(for: root.path)
-        return count > 0 ? "\(count)" : nil
-    }
 }

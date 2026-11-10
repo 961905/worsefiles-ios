@@ -64,12 +64,10 @@ final class AppModel: ObservableObject {
     func refreshIndexOnLaunch() async {
         guard !didInitialIndexCheck else { return }
         didInitialIndexCheck = true
-        guard Catalog.shared.hasSharedScan else { return }
         await refreshIndex(announce: false)
     }
 
     func refreshIndexOnActivate() async {
-        guard Catalog.shared.hasSharedScan else { return }
         await refreshIndex(announce: true)
     }
 
