@@ -97,6 +97,17 @@ struct RootView: View {
                             detail: countDetail(for: root))
                 }
             }
+            // Direct links to the tracked app's container: the UUID row is
+            // what the user actually wants on the home screen.
+            ForEach(catalog.items(for: Roots.dataApplication.path)) { item in
+                NavigationLink(value: BrowseTarget(path: item.path, title: item.displayName)) {
+                    RootRow(symbol: "app.badge.fill",
+                            tint: .blue,
+                            title: item.displayName,
+                            subtitle: item.name,
+                            detail: nil)
+                }
+            }
         } header: {
             Text("容器")
         } footer: {

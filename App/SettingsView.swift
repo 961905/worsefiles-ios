@@ -22,8 +22,7 @@ struct SettingsView: View {
     @State private var clearTarget: ClearTarget?
 
     private enum ClearTarget: String, Identifiable, Equatable {
-        case scans = "扫描结果"
-        case labels = "名称缓存"
+        case all = "缓存"
         var id: String { rawValue }
     }
 
@@ -54,19 +53,14 @@ struct SettingsView: View {
                                 titleVisibility: .visible,
                                 presenting: clearTarget) { target in
                 Button("清除\(target.rawValue)", role: .destructive) {
-                    if target == .scans {
-                        catalog.clearScans()
-                    } else {
-                        catalog.clearLabels()
-                    }
+                    catalog.clearScans()
+                    catalog.clearLabels()
                     clearTarget = nil
                     app.flash("已清除\(target.rawValue)")
                 }
                 Button("取消", role: .cancel) { clearTarget = nil }
             } message: { target in
-                Text(target == .scans
-                     ? "已发现的容器路径会全部丢弃，下次打开根目录重新扫描。"
-                     : "已缓存的 bundle identifier 会清空，界面回到 UUID 显示。")
+                Text("已发现的容器路径与容器名称会全部丢弃，下次打开根目录重新扫描。")
             }
         }
     }
@@ -171,14 +165,9 @@ struct SettingsView: View {
             LabeledContent("已缓存根路径", value: "\(catalog.disk.scans.count)")
             LabeledContent("已知容器名称", value: "\(catalog.disk.labels.count)")
             Button(role: .destructive) {
-                clearTarget = .scans
+                clearTarget = .all
             } label: {
-                Text("清除扫描结果")
-            }
-            Button(role: .destructive) {
-                clearTarget = .labels
-            } label: {
-                Text("清除名称缓存")
+                Text("清除缓存")
             }
         } header: {
             Text("缓存")
