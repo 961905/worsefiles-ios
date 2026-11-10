@@ -20,7 +20,7 @@ struct InstalledAppRecord: Sendable {
 enum InstalledApps {
     // nil: LaunchServices unavailable. []: a real empty answer.
     static func snapshot() -> [InstalledAppRecord]? {
-        guard let raw = WFInstalledApps() as? [[String: Any]] else { return nil }
+        guard let raw: [[String: Any]] = WFInstalledApps() else { return nil }
 
         var seen = Set<String>()
         var records: [InstalledAppRecord] = []

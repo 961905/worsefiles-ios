@@ -127,11 +127,6 @@ struct SettingsView: View {
             } label: {
                 Label("释放所有沙盒句柄", systemImage: "lock.open")
             }
-            NavigationLink {
-                DiagnosticsContent()
-            } label: {
-                Label("运行诊断", systemImage: "stethoscope")
-            }
         } header: {
             Text("App Group")
         } footer: {
