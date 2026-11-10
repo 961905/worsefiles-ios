@@ -447,6 +447,52 @@ final class FileService: @unchecked Sendable {
         return textExtensions.contains(ext)
     }
 
+    // MARK: - Diagnostics
+
+    func diagnose() -> [String] {
+        queue.sync {
+            var lines: [String] = []
+            let version = ProcessInfo.processInfo.operatingSystemVersion
+            lines.append("系统版本：iOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)")
+            lines.append("支持区间：iOS 26.0–26.7.2 / 27.2（worse_query）")
+            let snapshot = AppGroupResolver.snapshot(refresh: true)
+            lines.append("App Group（自动检测）：\(snapshot.active)")
+            lines.append("签名 App Groups：\(snapshot.groups.isEmpty ? "无或不可读" : snapshot.groups.joined(separator: ", "))")
+            lines.append("可访问的 App Group：\(snapshot.accessible.isEmpty ? "无" : snapshot.accessible.joined(separator: ", "))")
+            let group = snapshot.active
+            let groupURL = manager.containerURL(forSecurityApplicationGroupIdentifier: group)
+            lines.append("App Group 容器：\(groupURL?.path ?? "不可用")")
+
+            if let groupURL {
+                do {
+                    let handle = try broker.access(groupURL.path)
+                    lines.append("worse_query：成功（handle \(handle)）")
+                } catch {
+                    lines.append("worse_query：失败 — \(error.localizedDescription)")
+                }
+                broker.releaseAll()
+            } else {
+                lines.append("worse_query：跳过，App Group entitlement 不可用")
+            }
+
+            let baseline = ContainerScanner.shared.baselineInode()
+            lines.append("baseline inode：\(baseline > 0 ? String(baseline) : "不可用")")
+
+            let probeURL = tempRoot.appendingPathComponent("probe-\(UUID().uuidString)")
+            if (try? Data("probe".utf8).write(to: probeURL)) != nil {
+                var probeStat = stat()
+                if stat(probeURL.path, &probeStat) == 0 {
+                    let found = pathleak_range(tempRoot.path, UInt64(probeStat.st_ino), UInt64(probeStat.st_ino)) ?? []
+                    lines.append("fsgetpath：\(found.contains(probeURL.path) ? "正常" : "未命中")")
+                }
+                try? manager.removeItem(at: probeURL)
+            }
+
+            lines.append("已缓存句柄：\(broker.count)")
+            return lines
+        }
+    }
+
     // MARK: - Private
 
     private func grantLocked(_ path: String, preferParent: Bool) throws {
