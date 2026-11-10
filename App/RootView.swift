@@ -157,13 +157,11 @@ struct RootView: View {
 
     private var aboutSection: some View {
         Section {
-            Button {
-                activeSheet = .diagnostics
-            } label: {
-                Label("诊断与日志", systemImage: "stethoscope")
-            }
-            Link(destination: URL(string: "https://github.com/forcequitOS/worse_query")!) {
-                Label("worse_query 项目", systemImage: "arrow.up.right.square")
+            HStack {
+                Text("支持版本")
+                Spacer()
+                Text("iOS 26.0–26.7.2 / 27.2")
+                    .foregroundStyle(.secondary)
             }
             HStack {
                 Text("版本")
@@ -174,8 +172,6 @@ struct RootView: View {
             }
         } header: {
             Text("关于")
-        } footer: {
-            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。本应用同以 GPL-3.0 发布，源码在项目仓库。")
         }
     }
 
