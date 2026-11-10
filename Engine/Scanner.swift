@@ -126,8 +126,22 @@ final class ContainerScanner: @unchecked Sendable {
 
             var target: String?
             for path in found {
-                let metadata = NSDictionary(contentsOfFile: path + "/.com.apple.mobile_container_manager.metadata.plist")
-                let bundleId = metadata?["MCContainerBundleIdentifier"] as? String
+                // The container bundle id lives in a directory xattr; one
+                // getxattr call, no file open. Plist MCMMetadataIdentifier is
+                // the fallback.
+                let xattrName = "com.apple.containermanager.identifier"
+                let needed = getxattr(path, xattrName, nil, 0, 0, 0)
+                var bundleId: String?
+                if needed > 0 {
+                    var buffer = [CChar](repeating: 0, count: Int(needed) + 1)
+                    let read = getxattr(path, xattrName, &buffer, Int(needed), 0, 0)
+                    if read > 0 { bundleId = String(cString: buffer) }
+                }
+                if bundleId == nil,
+                   let metadata = NSDictionary(contentsOfFile: path + "/.com.apple.mobile_container_manager.metadata.plist"),
+                   let identifier = metadata["MCMMetadataIdentifier"] as? String {
+                    bundleId = identifier
+                }
                 if bundleId?.contains(needle) == true || path.contains(needle) {
                     target = path
                     break
