@@ -21,15 +21,20 @@ struct RootView: View {
         NavigationStack(path: $app.navPath) {
             List {
                 environmentSection
-                containersSection
                 if index.progress != nil {
                     scanProgressSection
+                }
+                if !catalog.items(for: Roots.dataApplication.path).isEmpty {
+                    containersSection
                 }
                 if !app.favorites.isEmpty { favoritesSection }
                 aboutSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle("容器文件")
+            .onReceive(NotificationCenter.default.publisher(for: .worseFilesIndexUpdated)) { _ in
+                objectWillChange.send()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
