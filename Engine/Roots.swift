@@ -39,7 +39,7 @@ enum Roots {
 
     static var escapeSupported: Bool { majorVersion >= 26 }
 
-    // The window worse_query documents. Outside it the app still tries, but
+    // The documented support window. Outside it the app still tries, but
     // the UI says so instead of claiming support.
     static var testedWindow: Bool {
         let version = ProcessInfo.processInfo.operatingSystemVersion

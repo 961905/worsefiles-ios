@@ -2,7 +2,7 @@
 //  Sandbox.swift
 //  WorseFiles
 //
-//  Handle pool around worse_query(). One consumed extension is enough for a
+//  Handle pool around the escape broker. One consumed extension is enough for a
 //  directory and everything under it, but a few are kept around so moving
 //  between neighbouring folders does not pay for a container query every time.
 //
@@ -39,7 +39,7 @@ enum SandboxError: LocalizedError {
         case .targetMissing(let path):
             return "目标不存在：\(path)"
         case .code(let code):
-            return "worse_query 返回 \(code)。"
+            return "沙盒逃逸返回 \(code)。"
         }
     }
 

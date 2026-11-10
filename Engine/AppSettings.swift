@@ -59,7 +59,7 @@ enum AppSettings {
     }
 
     // Blank means "use the inode of a freshly created file as the upper bound",
-    // the same trick worse_query's own demo uses.
+    // the same trick the upstream demo uses.
     static var maxInodeOverride: UInt64? {
         get {
             guard let raw = UserDefaults.standard.string(forKey: SettingsKey.maxInode),

@@ -127,7 +127,7 @@ final class ContainerScanner: @unchecked Sendable {
             var target: String?
             for path in found {
                 // Same identifier path the full scan uses: obtain a sandbox
-                // extension first (worse_query broker), then read the xattr or
+                // extension first (broker), then read the xattr or
                 // metadata plist. Without the extension the reads silently
                 // fail for other apps' containers.
                 let bundleId = FileService.shared.identifier(for: path)

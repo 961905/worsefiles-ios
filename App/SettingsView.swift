@@ -184,7 +184,7 @@ struct SettingsView: View {
         } header: {
             Text("沙盒")
         } footer: {
-            Text("worse_query 仅覆盖 iOS 26.0–26.7.2 / 27.2，且只适用于自己的设备。不是越狱，也不提供越狱能力。")
+            Text("仅覆盖 iOS 26.0–26.7.2 / 27.2，且只适用于自己的设备。不是越狱，也不提供越狱能力。")
         }
     }
 

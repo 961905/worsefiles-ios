@@ -31,7 +31,7 @@ struct RootView: View {
                 aboutSection
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("容器文件")
+            .navigationTitle("小天工具箱")
             .onReceive(NotificationCenter.default.publisher(for: .worseFilesIndexUpdated)) { _ in
                 catalog.objectWillChange.send()
             }
@@ -79,7 +79,7 @@ struct RootView: View {
                 RootRow(symbol: "checkmark.shield.fill",
                         tint: .green,
                         title: "环境就绪",
-                        subtitle: "App Group 可用。",
+                        subtitle: "App Group 可用。系统版本只支持 iOS 26.0–26.7.2 / 27.2。",
                         detail: nil)
             } else {
                 RootRow(symbol: "exclamationmark.triangle.fill",
@@ -109,7 +109,7 @@ struct RootView: View {
                 }
             }
         } header: {
-            Text("容器")
+            Text("游戏")
         }
     }
 
