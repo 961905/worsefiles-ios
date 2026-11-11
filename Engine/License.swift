@@ -12,21 +12,24 @@ enum License {
 
     private(set) static var networkTime: Date?
 
-    static var expired: Bool { referenceTime >= expiry }
+    static var expired: Bool {
+        guard let time = referenceTime else { return false }
+        return time >= expiry
+    }
 
     // Expiry is judged only against the NTP answer; without a network answer
     // we cannot trust the device clock, so access stays closed until a valid
     // time arrives.
     static var referenceTime: Date? { networkTime }
 
-    private static let ntpOffset: TimeInterval = 2_208_988_800 // 1900 -> 1970
+    private static let ntpOffset: Double = 2_208_988_800 // 1900 -> 1970
 
     // Minimal SNTP client over UDP :123. One request per call; falls back to
     // the device clock when the server is unreachable.
     static func fetchNetworkTime() async {
         let seconds = await requestNTPSeconds()
         if let seconds {
-            networkTime = Date(timeIntervalSince1970: seconds - ntpOffset)
+            networkTime = Date(timeIntervalSince1970: Double(seconds) - ntpOffset)
         }
     }
 
