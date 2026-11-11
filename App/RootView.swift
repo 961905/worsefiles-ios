@@ -49,6 +49,7 @@ struct RootView: View {
                 BrowserView(target: target)
             }
             .task {
+                await License.fetchNetworkTime()
                 await scanIfNeeded()
             }
             .sheet(item: $activeSheet) { sheet in
@@ -75,11 +76,17 @@ struct RootView: View {
 
     private var environmentSection: some View {
         Section {
-            if groupAvailable && Roots.testedWindow {
+            if License.expired {
+                RootRow(symbol: "lock.shield.fill",
+                        tint: .red,
+                        title: "授权已到期",
+                        subtitle: "软件已停用，请联系作者获取新版本。",
+                        detail: nil)
+            } else if groupAvailable && Roots.testedWindow {
                 RootRow(symbol: "checkmark.shield.fill",
                         tint: .green,
                         title: "环境就绪",
-                        subtitle: "App Group 可用",
+                        subtitle: timeSubtitle,
                         detail: nil)
             } else {
                 RootRow(symbol: "exclamationmark.triangle.fill",
@@ -93,6 +100,16 @@ struct RootView: View {
         } footer: {
             Text("支持和平精英手动修改画质、分辨率、广角等")
         }
+    }
+
+    private var timeSubtitle: String {
+        let base = "App Group 可用"
+        guard let time = License.networkTime else { return base }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        let remaining = License.daysRemaining
+        return "\(base)。NTP \(formatter.string(from: time))，剩余 \(remaining) 天"
     }
 
     private var containersSection: some View {
