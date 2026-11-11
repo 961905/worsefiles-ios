@@ -115,6 +115,11 @@ final class BrowserModel: ObservableObject {
     }
 
     func refresh() async {
+        await License.fetchNetworkTime()
+        guard License.hasTime, !License.expired else {
+            errorMessage = License.hasTime ? "授权已到期，软件已停用。" : "无法获取网络时间，请检查网络。"
+            return
+        }
         if let spec = Roots.spec(for: path) {
             loadGeneration += 1
             let generation = loadGeneration
