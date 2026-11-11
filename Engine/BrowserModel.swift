@@ -128,9 +128,10 @@ final class BrowserModel: ObservableObject {
 
     func load(forceScan: Bool) async {
         await License.fetchNetworkTime()
-        guard !License.expired else {
-            errorMessage = "授权已到期，软件已停用。"
-            state = items.isEmpty ? .failed("授权已到期，软件已停用。") : .loaded
+        guard License.hasTime, !License.expired else {
+            errorMessage = License.hasTime ? "授权已到期，软件已停用。" : "无法获取网络时间，请检查网络。"
+            let message = errorMessage ?? ""
+            state = items.isEmpty ? .failed(message) : .loaded
             return
         }
         loadGeneration += 1

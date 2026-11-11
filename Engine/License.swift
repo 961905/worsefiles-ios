@@ -14,11 +14,10 @@ enum License {
 
     static var expired: Bool { referenceTime >= expiry }
 
-    static var daysRemaining: Int {
-        max(0, Int(expiry.timeIntervalSince(referenceTime) / 86400))
-    }
-
-    static var referenceTime: Date { networkTime ?? Date() }
+    // Expiry is judged only against the NTP answer; without a network answer
+    // we cannot trust the device clock, so access stays closed until a valid
+    // time arrives.
+    static var referenceTime: Date? { networkTime }
 
     private static let ntpOffset: TimeInterval = 2_208_988_800 // 1900 -> 1970
 
@@ -30,6 +29,8 @@ enum License {
             networkTime = Date(timeIntervalSince1970: seconds - ntpOffset)
         }
     }
+
+    static var hasTime: Bool { networkTime != nil }
 
     private static func requestNTPSeconds() async -> UInt64? {
         await withCheckedContinuation { continuation in

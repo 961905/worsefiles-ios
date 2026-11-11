@@ -82,6 +82,12 @@ struct RootView: View {
                         title: "授权已到期",
                         subtitle: "软件已停用，请联系作者获取新版本。",
                         detail: nil)
+            } else if !License.hasTime {
+                RootRow(symbol: "hourglass",
+                        tint: .orange,
+                        title: "正在校时",
+                        subtitle: "等待 NTP 时间响应…",
+                        detail: nil)
             } else if groupAvailable && Roots.testedWindow {
                 RootRow(symbol: "checkmark.shield.fill",
                         tint: .green,
@@ -108,8 +114,7 @@ struct RootView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MM-dd HH:mm:ss"
         formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-        let remaining = License.daysRemaining
-        return "\(base)。NTP \(formatter.string(from: time))，剩余 \(remaining) 天"
+        return "\(base)。NTP \(formatter.string(from: time))"
     }
 
     private var containersSection: some View {
